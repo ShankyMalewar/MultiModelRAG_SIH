@@ -1,0 +1,100 @@
+# ---------------------
+# Python Basics
+# ---------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dll
+
+# Byte-compiled / optimized / DLL files
+*.egg-info/
+*.egg
+*.manifest
+*.spec
+
+# ---------------------
+# Virtual Environments
+# ---------------------
+.env
+.venv/
+env/
+venv/
+ENV/
+.conda/
+conda_env/
+
+# ---------------------
+# Jupyter / Notebooks
+# ---------------------
+.ipynb_checkpoints
+*.ipynb
+
+# ---------------------
+# OS / Editor Files
+# ---------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# ---------------------
+# Logs & Cache
+# ---------------------
+*.log
+logs/
+*.tmp
+*.bak
+*.old
+*.lock
+__pycache__/
+.cache/
+*.pytest_cache/
+*.mypy_cache/
+*.ruff_cache/
+
+# ---------------------
+# Data / Storage (important!)
+# ---------------------
+data/
+datasets/
+models/
+checkpoints/
+outputs/
+experiments/
+results/
+runs/
+*.h5
+*.ckpt
+*.bin
+*.pt
+*.onnx
+
+# ---------------------
+# Build Artifacts
+# ---------------------
+build/
+dist/
+site/
+*.egg-info/
+MANIFEST
+
+# ---------------------
+# Environment / Secrets
+# ---------------------
+*.env
+.env.*
+.envrc
+
+# ---------------------
+# Specific for your project
+# ---------------------
+# Vault and session storage (from .env)
+data/vault/
+data/sessions/
+
+# Local OCR / ASR model directories (if any)
+whisper_models/
+embedding_models/

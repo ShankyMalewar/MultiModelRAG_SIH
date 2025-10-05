@@ -1,0 +1,28 @@
+version: "3.8"
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRACEFUL_SHUTDOWN_SECONDS: 30
+      # adjust these envs if needed, e.g. memory limits on host
+
+  typesense:
+    image: typesense/typesense:0.24.0
+    container_name: typesense
+    restart: unless-stopped
+    environment:
+      - TYPESENSE_DATA_DIR=/data
+      - TYPESENSE_API_KEY=xyz
+    ports:
+      - "8108:8108"
+    volumes:
+      - ./data/typesense:/data
+    # OPTIONAL: remove the service if you don't want Typesense now
+
+# Optional: add a qdrant-ui or admin console service later if desired

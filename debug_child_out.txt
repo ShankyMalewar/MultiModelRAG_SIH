@@ -1,0 +1,7 @@
+DEBUG_CHILD: start
+DEBUG_CHILD: sys.executable = C:\Users\malew\Desktop\All Projects\Multimodel RAG\.venv\Scripts\python.exe
+DEBUG_CHILD: sys.version   = 3.12.7 (tags/v3.12.7:0b05ead, Oct  1 2024, 03:06:41) [MSC v.1941 64 bit (AMD64)]
+DEBUG_CHILD: cwd           = C:\Users\malew\Desktop\All Projects\Multimodel RAG
+DEBUG_CHILD: path arg      = C:\Users\malew\Desktop\All Projects\Multimodel RAG\data\vault\REPLACE_WITH_YOUR_SAVED_FILENAME.pdf
+DEBUG_CHILD: sys.path[0:3] = ['C:\\Users\\malew\\Desktop\\All Projects\\Multimodel RAG', 'C:\\Users\\malew\\AppData\\Local\\Programs\\Python\\Python312\\python312.zip', 'C:\\Users\\malew\\AppData\\Local\\Programs\\Python\\Python312\\DLLs']
+DEBUG_CHILD: importing app.ingest.ingest ...

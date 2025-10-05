@@ -1,0 +1,12 @@
+[
+  {
+    "file": "data/vault/sample.mp3",
+    "result": {
+      "file_path": "data/vault/sample.mp3",
+      "file_name": "sample.mp3",
+      "chunks_created": 1,
+      "chunk_ids": [],
+      "errors": []
+    }
+  }
+]

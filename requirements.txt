@@ -1,0 +1,63 @@
+# ---------------------
+# Web / API
+# ---------------------
+fastapi
+uvicorn[standard]
+httpx
+aiofiles
+python-multipart
+pydantic
+starlette   # explicitly listed (FastAPI dependency, but makes editors happy)
+
+# ---------------------
+# Core ML / Embeddings / Rerankers
+# ---------------------
+torch
+transformers
+sentence-transformers
+datasets
+accelerate
+
+# ---------------------
+# ASR / Whisper
+# ---------------------
+faster-whisper
+# optional alternative backend
+openai-whisper ; sys_platform != "win32"
+
+# ---------------------
+# OCR / Images / PDF / Docs
+# ---------------------
+pytesseract
+Pillow
+pymupdf     # same as fitz, keep only pymupdf to avoid confusion
+python-docx
+pdf2image
+ffmpeg-python
+
+# ---------------------
+# Vector DBs & Search
+# ---------------------
+qdrant-client
+typesense
+
+# ---------------------
+# Utilities
+# ---------------------
+requests
+python-dotenv
+tqdm
+loguru
+click
+
+# ---------------------
+# Testing
+# ---------------------
+pytest
+
+# ---------------------
+# Optional helpers
+# ---------------------
+python-magic
+pandas
+scikit-learn
