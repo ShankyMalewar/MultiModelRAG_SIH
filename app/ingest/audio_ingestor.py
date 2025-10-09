@@ -10,7 +10,8 @@ from app.core.embedder import Embedder
 from app.services.qdrant_service import QdrantService
 
 logger = logging.getLogger("asklyne.ingest.audio")
-logging.basicConfig(level=logging.INFO)
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO)
 
 
 def get_asr_handler(model_name: Optional[str] = None):
@@ -19,7 +20,13 @@ def get_asr_handler(model_name: Optional[str] = None):
 
 
 class AudioIngestor:
-    def __init__(self, asr=None, embedder=None, qdrant=None):
+    def __init__(self, session_id: Optional[str] = None, asr=None, embedder=None, qdrant=None):
+        """
+        Args:
+            session_id: optional session id to tag created chunk metadata with
+            asr/embedder/qdrant: optional injected dependencies for easier testing
+        """
+        self.session_id = session_id
         self._asr = asr
         self._embedder = embedder
         self._qdrant = qdrant
@@ -52,9 +59,9 @@ class AudioIngestor:
         start_t = time.time()
         filename = filename or os.path.basename(file_path)
 
-        result = IngestResult(file_name=filename, file_path=file_path, chunk_ids=[], chunks_created=0, errors=[])
+        result = IngestResult(file_path=file_path, file_name=filename, chunk_ids=[], chunks_created=0, errors=[])
 
-        logger.info("AudioIngestor: starting pipeline for %s", file_path)
+        logger.info("AudioIngestor: starting pipeline for %s (session=%s)", file_path, self.session_id)
 
         # 1. Transcribe
         try:
@@ -86,16 +93,51 @@ class AudioIngestor:
                     "segment_end": seg.get("end"),
                     "source": file_path,
                 }
-                chunks.append(ChunkDoc.create(text=sc, modality="audio", filename=filename, meta=meta))
+                if self.session_id:
+                    meta["session_id"] = self.session_id
+
+                try:
+                    chunk = ChunkDoc.create(text=sc, modality="audio", filename=filename, meta=meta)
+                except Exception:
+                    # fallback: create a simple dict-like chunk if ChunkDoc.create not available
+                    chunk = {
+                        "text": sc,
+                        "modality": "audio",
+                        "filename": filename,
+                        "meta": meta,
+                    }
+                chunks.append(chunk)
+
         result.chunks_created = len(chunks)
         logger.info("AudioIngestor: total %d text chunks created.", len(chunks))
 
         # 3. Embed
         try:
             logger.info("AudioIngestor: embedding %d chunks...", len(chunks))
-            vectors = self.embedder.embed_batch([c.text for c in chunks])
-            for c, v in zip(chunks, vectors):
-                c.embedding = v
+            texts = [c["text"] if isinstance(c, dict) else getattr(c, "text", "") for c in chunks]
+
+            # Prefer embed_chunks, fallback to embed_batch for backward compatibility
+            embeddings = None
+            if hasattr(self.embedder, "embed_chunks"):
+                embeddings = self.embedder.embed_chunks(texts)
+            elif hasattr(self.embedder, "embed_batch"):
+                embeddings = self.embedder.embed_batch(texts)
+            else:
+                # try a generic embed_text or embed method
+                if hasattr(self.embedder, "embed"):
+                    embeddings = [self.embedder.embed(t) for t in texts]
+                else:
+                    raise RuntimeError("Embedder has no known embed method")
+
+            # attach embeddings back to chunk objects
+            for c, emb in zip(chunks, embeddings):
+                try:
+                    if isinstance(c, dict):
+                        c["embedding"] = emb
+                    else:
+                        setattr(c, "embedding", emb)
+                except Exception:
+                    logger.debug("Could not attach embedding to chunk; continuing.")
             logger.info("AudioIngestor: embedding completed.")
         except Exception as e:
             logger.exception("AudioIngestor: embedding failed: %s", e)
@@ -105,8 +147,19 @@ class AudioIngestor:
         try:
             logger.info("AudioIngestor: upserting %d chunks to Qdrant...", len(chunks))
             upserted, failed = self.qdrant.upsert_chunks(chunks)
-            result.chunk_ids = [c.id for c in chunks if c.id not in failed]
-            logger.info("AudioIngestor: upsert finished (success=%d, failed=%d).", upserted, len(failed))
+            # attempt to collect chunk ids, tolerant of dict or object chunks
+            ids = []
+            for c in chunks:
+                try:
+                    cid = getattr(c, "id", None)
+                    if cid is None and isinstance(c, dict):
+                        cid = c.get("id") or c.get("chunk_id")
+                    if cid:
+                        ids.append(cid)
+                except Exception:
+                    continue
+            result.chunk_ids = ids
+            logger.info("AudioIngestor: upsert finished (success=%s, failed=%d).", upserted, len(failed))
         except Exception as e:
             logger.exception("AudioIngestor: Qdrant upsert failed: %s", e)
             result.errors.append(f"qdrant_upsert_failed:{e}")
@@ -116,3 +169,16 @@ class AudioIngestor:
             filename, result.chunks_created, result.errors, time.time() - start_t,
         )
         return result
+
+
+# Quick CLI test
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("file", help="Path to audio file")
+    parser.add_argument("--session-id", help="Optional session id", default=None)
+    args = parser.parse_args()
+
+    ing = AudioIngestor(session_id=args.session_id)
+    res = ing.ingest_audio(args.file)
+    print("Result:", getattr(res, "to_dict", lambda: res.__dict__)())

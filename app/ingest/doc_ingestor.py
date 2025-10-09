@@ -1,12 +1,27 @@
 # app/ingest/doc_ingestor.py
 """
-Document ingestion for PDF / DOCX
+Robust Document ingestor (patched)
+
+Improvements in this patch:
+- Always produce a plain dict payload for Qdrant upsert (id, embedding, payload) in addition
+  to attempting to create ChunkDoc objects. This avoids schema mismatches between different
+  ChunkDoc implementations and the Qdrant upsert code.
+- Validate and normalize embeddings returned from Embedder: convert numpy/torch tensors to
+  python lists of floats, ensure the vector length matches Qdrant collection dimension and
+  log/skip otherwise.
+- Clear, actionable logging when chunks are skipped (missing embedding or wrong dim).
+- Keep backward compatible `ChunkDoc` creation attempts while ensuring upsert will get
+  correct payloads.
+
+This file is intended to replace your current doc_ingestor.py. After saving it, restart
+your app and re-run an ingest. If you still see issues, paste the logs for the `DocIngestor`
+and the `QdrantService` last_payload / last_server_response.
 """
 
 import logging
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Any
 from inspect import signature
 
 from app.core.chunker import chunk_paragraphs, chunk_text
@@ -31,7 +46,8 @@ except Exception:
     OCRHandler = None
 
 logger = logging.getLogger("asklyne.ingest.doc")
-logging.basicConfig(level=logging.INFO)
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO)
 
 
 def extract_text_from_pdf(path: str) -> List[str]:
@@ -79,42 +95,31 @@ def _create_chunk_doc_with_fallback(ChunkDocCls, **kwargs):
     """
     Robust creation wrapper for ChunkDoc.create that tolerates different
     schema field names for the vector/embedding field.
-
-    - Tries common candidate names for the embedding vector (embedding, vector, vec, etc).
-    - If none of them works, inspects ChunkDocCls.create signature and attempts to map.
-    - Raises the final Exception if creation fails.
     """
     base_kwargs = dict(kwargs)
     emb = base_kwargs.pop("embedding", None)
 
-    # candidate names to try (in order)
     candidates = ["embedding", "vector", "embedding_vector", "vec", "embedding_vec", "emb", "vector_embedding"]
 
     attempts = []
-    # If embedding present, create attempts with different key names
     if emb is not None:
         for name in candidates:
             kop = base_kwargs.copy()
             kop[name] = emb
             attempts.append(kop)
     else:
-        # If no embedding provided, just attempt the provided kwargs
         attempts.append(base_kwargs.copy())
 
-    # Try each attempt
     last_exc = None
     for attempt_kwargs in attempts:
         try:
             return ChunkDocCls.create(**attempt_kwargs)
         except TypeError as e:
-            # wrong kwarg names likely; try next
             last_exc = e
             continue
         except Exception as e:
-            # other failures (validation, DB) should be surfaced
             raise
 
-    # Introspect signature and try to map parameters heuristically
     try:
         sig = signature(ChunkDocCls.create)
         params = list(sig.parameters.keys())
@@ -130,9 +135,67 @@ def _create_chunk_doc_with_fallback(ChunkDocCls, **kwargs):
 
 
 class DocIngestor:
-    def __init__(self):
+    def __init__(self, session_id: Optional[str] = None):
         self.embedder = Embedder()
         self.qdrant = QdrantService()
+        self.session_id = session_id
+        # lazily instantiate OCRHandler only when needed
+        self._ocr_handler = None
+
+    @property
+    def ocr_handler(self):
+        if self._ocr_handler is None and OCRHandler is not None:
+            try:
+                self._ocr_handler = OCRHandler()
+            except Exception:
+                self._ocr_handler = None
+        return self._ocr_handler
+
+    def _normalize_embedding(self, emb: Any) -> Optional[List[float]]:
+        """Convert embedding tensor/array to python list of floats and validate dim.
+        Returns None if conversion fails or dim mismatch.
+        """
+        if emb is None:
+            return None
+        # convert numpy/torch/other to list
+        try:
+            if hasattr(emb, "tolist"):
+                emb_list = emb.tolist()
+            else:
+                emb_list = list(emb)
+        except Exception:
+            logger.exception("Failed to convert embedding to list: %s", type(emb))
+            return None
+
+        # If nested numpy returns e.g. array([...], dtype=float32) -> ensure flat list of floats
+        try:
+            emb_list = [float(x) for x in emb_list]
+        except Exception:
+            # try flatten if it's an array-like of arrays
+            try:
+                flat = []
+                for sub in emb_list:
+                    for x in sub:
+                        flat.append(float(x))
+                emb_list = flat
+            except Exception:
+                logger.exception("Failed to coerce embedding elements to float")
+                return None
+
+        # Validate length against Qdrant collection expected dimension
+        expected = getattr(self.qdrant, "_vector_size", None)
+        # If Qdrant has named vectors mapping, try to use first entry
+        if expected is None:
+            named = getattr(self.qdrant, "_named_vectors", None)
+            if isinstance(named, dict) and len(named) > 0:
+                # pick first value
+                expected = list(named.values())[0]
+
+        if expected is not None and len(emb_list) != expected:
+            logger.warning("Embedding dimension mismatch: expected %s got %s. This chunk will be skipped.", expected, len(emb_list))
+            return None
+
+        return emb_list
 
     def ingest_document(self, file_path: str, filename: Optional[str] = None, ocr_if_scanned=True) -> IngestResult:
         start_t = time.time()
@@ -140,7 +203,7 @@ class DocIngestor:
         filename = filename or path.name
         result = IngestResult(file_path=str(path), file_name=filename, chunks_created=0, errors=[])
 
-        logger.info("DocIngestor: starting ingest for %s", file_path)
+        logger.info("DocIngestor: starting ingest for %s (session=%s)", file_path, self.session_id)
         ext = path.suffix.lower()
         paragraphs: List[str] = []
 
@@ -153,12 +216,11 @@ class DocIngestor:
                 if pg.strip():
                     paragraphs.extend([p.strip() for p in pg.split("\n\n") if p.strip()])
 
-            # OCR fallback
-            if len("".join(paragraphs)) < 200 and ocr_if_scanned and OCRHandler is not None:
+            # OCR fallback for scanned PDFs
+            if len("".join(paragraphs)) < 200 and ocr_if_scanned and self.ocr_handler is not None:
                 logger.info("DocIngestor: low-text PDF, performing OCR fallback...")
                 try:
-                    ocr = OCRHandler()
-                    ocr_text = ocr.extract_text_from_pdf(str(path))
+                    ocr_text = self.ocr_handler.extract_text_from_pdf(str(path))
                     if isinstance(ocr_text, str):
                         paragraphs = [p for p in ocr_text.split("\n\n") if p.strip()]
                     elif isinstance(ocr_text, list):
@@ -183,7 +245,6 @@ class DocIngestor:
         # 2. Chunkify
         logger.info("DocIngestor: chunking paragraphs...")
         try:
-            # ensure paragraphs is a single text string for chunker
             if isinstance(paragraphs, list):
                 joined_text = "\n\n".join([p for p in paragraphs if isinstance(p, str)])
             else:
@@ -192,7 +253,6 @@ class DocIngestor:
             chunks_texts = chunk_paragraphs(joined_text, min_length=20)
 
             if not chunks_texts:
-                # fallback to chunk_text if chunk_paragraphs produced nothing
                 chunks_texts = chunk_text("\n\n".join(paragraphs))
         except Exception as e:
             logger.exception("DocIngestor: chunking failed: %s", e)
@@ -215,83 +275,81 @@ class DocIngestor:
             result.errors.append(f"embedding_failed:{e}")
             return result
 
-        # 4. Create ChunkDocs (robust)
+        # 4. Build Qdrant upsert payloads (robust) and optional ChunkDoc objects
+        upsert_payloads = []
         chunk_objs: List[ChunkDoc] = []
         for idx, (text, emb) in enumerate(zip(chunks_texts, embeddings)):
             try:
-                # ensure embedding is a plain list of floats
-                if hasattr(emb, "tolist"):
-                    emb_list = list(map(float, emb.tolist()))
-                else:
-                    emb_list = list(map(float, emb))
+                emb_list = self._normalize_embedding(emb)
+                if emb_list is None:
+                    logger.warning("DocIngestor: skipping chunk idx=%s due to invalid embedding.", idx)
+                    result.errors.append(f"invalid_embedding_idx:{idx}")
+                    continue
 
-                # prepare kwargs commonly used by ChunkDoc.create
-                create_kwargs = dict(
-                    text=text,
-                    modality="text",
-                    filename=filename,
-                    source_path=str(path),
-                    meta={"chunk_index": idx},
-                    embedding=emb_list,
-                )
+                meta = {"chunk_index": idx}
+                if self.session_id:
+                    meta["session_id"] = self.session_id
 
-                # use robust wrapper to tolerate schema differences
-                chunk_obj = _create_chunk_doc_with_fallback(ChunkDoc, **create_kwargs)
+                # Build a plain payload dict that matches QdrantService expectations
+                payload = {
+                    "id": None,
+                    "embedding": emb_list,
+                    "payload": {
+                        "text": text,
+                        "filename": filename,
+                        "source_path": str(path),
+                        **meta,
+                    },
+                }
+                upsert_payloads.append(payload)
 
-                # ensure the chunk object exposes the embedding in common attribute names
-                # (some schemas expect .vector or .embedding)
+                # Try creating a ChunkDoc if available, but don't depend on it for upsert
                 try:
-                    # if returned object is a dict-like object set keys
-                    if isinstance(chunk_obj, dict):
-                        # set common keys
-                        chunk_obj["embedding"] = emb_list
-                        chunk_obj["vector"] = emb_list
-                    else:
-                        # set attributes if not present
-                        if not hasattr(chunk_obj, "embedding"):
-                            try:
-                                setattr(chunk_obj, "embedding", emb_list)
-                            except Exception:
-                                pass
-                        if not hasattr(chunk_obj, "vector"):
-                            try:
-                                setattr(chunk_obj, "vector", emb_list)
-                            except Exception:
-                                pass
+                    create_kwargs = dict(
+                        text=text,
+                        modality="text",
+                        filename=filename,
+                        source_path=str(path),
+                        meta=meta,
+                        embedding=emb_list,
+                    )
+                    cd = _create_chunk_doc_with_fallback(ChunkDoc, **create_kwargs)
+                    chunk_objs.append(cd)
                 except Exception:
-                    # not fatal; proceed but log
-                    logger.debug("DocIngestor: couldn't attach embedding attributes to chunk_obj; proceeding.")
+                    # non-fatal
+                    logger.debug("DocIngestor: ChunkDoc.create failed for idx=%s; continuing with plain payload.", idx)
 
-                chunk_objs.append(chunk_obj)
             except Exception as e:
-                logger.exception("DocIngestor: failed to create chunk doc for idx=%s: %s", idx, e)
-                result.errors.append(f"chunk_create_failed:{e}")
-                # continue to next chunk (do not abort entire ingest for a single chunk)
+                logger.exception("DocIngestor: failed to prepare chunk idx=%s: %s", idx, e)
+                result.errors.append(f"chunk_prepare_failed:{idx}:{e}")
                 continue
 
-        if not chunk_objs:
-            result.errors.append("no_chunk_objects_created")
-            logger.error("DocIngestor: no chunk objects created; aborting upsert.")
+        if not upsert_payloads:
+            result.errors.append("no_valid_embeddings_to_upsert")
+            logger.error("DocIngestor: no valid payloads to upsert; aborting.")
             return result
 
-        # 5. Upsert
+        # 5. Upsert to Qdrant
         try:
-            logger.info("DocIngestor: upserting %d chunks to Qdrant...", len(chunk_objs))
-            upserted, failed = self.qdrant.upsert_chunks(chunk_objs, batch_size=64)
+            logger.info("DocIngestor: upserting %d chunks to Qdrant...", len(upsert_payloads))
+            upserted, failed = self.qdrant.upsert_chunks(upsert_payloads, batch_size=64)
             logger.info("DocIngestor: upsert complete (success=%d, failed=%d).", upserted, len(failed))
-            # Attempt to collect ids if available
+
             ids = []
-            for c in chunk_objs:
+            for p in upsert_payloads:
+                # Qdrant may assign id server-side; if our payload had id None, Qdrant upsert returns ids.
+                # Keep any id present in local payloads.
                 try:
-                    cid = getattr(c, "id", None)
-                    if cid is None and isinstance(c, dict):
-                        cid = c.get("id") or c.get("chunk_id") or c.get("chunk_id")
+                    cid = p.get("id")
                     if cid:
                         ids.append(cid)
                 except Exception:
                     continue
+
+            # If QdrantService.upsert_chunks returns ids, the caller can inspect svc.last_server_response
+            # to map assigned ids — we record the number inserted here.
             result.chunk_ids = ids
-            result.chunks_created = len(ids)
+            result.chunks_created = upserted
         except Exception as e:
             logger.exception("DocIngestor: Qdrant upsert failed: %s", e)
             result.errors.append(f"qdrant_upsert_failed:{e}")

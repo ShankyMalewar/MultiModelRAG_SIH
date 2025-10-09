@@ -1,6 +1,6 @@
-# app/ingestors/image_ingestor.py
+# app/ingest/image_ingestor.py
 """
-Image ingestor for Asklyne Offline.
+Image ingestor for Asklyne Offline (session-aware).
 
 Responsibilities:
  - Accept an image file (png/jpg/heic/...) path
@@ -9,14 +9,9 @@ Responsibilities:
  - Embed chunks via Embedder
  - Upsert chunks into Qdrant via QdrantService
  - Return an IngestResult summarizing the ingestion
-
-Notes:
- - This module intentionally keeps things sync to match the rest of the codebase.
- - If you add an offline captioning model later, implement `caption_fallback` to produce
-   a short summary for images with little OCR text.
 """
 
-from typing import List, Tuple, Optional
+from typing import List, Optional
 import os
 import logging
 from PIL import Image
@@ -27,12 +22,15 @@ from app.core.embedder import Embedder
 from app.services.qdrant_service import QdrantService
 from app.core.schema import ChunkDoc, IngestResult
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("asklyne.ingest.image")
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO)
 
 
 class ImageIngestor:
     def __init__(
         self,
+        session_id: Optional[str] = None,
         embed_mode: str = "text",
         chunk_token_size: int = 512,
         chunk_overlap: int = 50,
@@ -41,17 +39,19 @@ class ImageIngestor:
     ):
         """
         Args:
+            session_id: optional session id to tag created chunk metadata with
             embed_mode: 'text'|'code' (passed to Embedder)
             chunk_token_size: approx token size per chunk
             chunk_overlap: overlap tokens
         """
+        self.session_id = session_id
         self.embed_mode = embed_mode
         # ensure a Chunker instance exists
-        from app.core.chunker import Chunker  # local import to avoid circulars during top-level import
-        self.chunker = Chunker(max_tokens=chunk_token_size, overlap=chunk_overlap, file_type="text")
+        from app.core.chunker import Chunker as _Chunker  # local import to avoid circulars at top-level
+        self.chunker = _Chunker(max_tokens=chunk_token_size, overlap=chunk_overlap, file_type="text")
         # embedder
-        from app.core.embedder import Embedder
-        self.embedder = Embedder(mode=self.embed_mode)
+        from app.core.embedder import Embedder as _Embedder
+        self.embedder = _Embedder(mode=self.embed_mode)
         self.qdrant = qdrant or QdrantService()
         self.ocr = ocr or OCRHandler()
 
@@ -77,7 +77,7 @@ class ImageIngestor:
         errors: List[str] = []
 
         try:
-            # 1) OCR: we prefer detailed data (bbox, line-level)
+            # 1) OCR: prefer detailed data (bbox, line-level)
             ocr_blocks = self._ocr_blocks_from_image(image_path)
             if not ocr_blocks:
                 # fallback: try captioning or whole-image OCR text
@@ -95,12 +95,19 @@ class ImageIngestor:
                 bbox = block.get("bbox")  # (x1,y1,x2,y2) or None
 
                 if not text:
-                    # skip completely empty text blocks unless you want captions
+                    # skip empty text blocks unless caption fallback wanted
                     continue
 
                 # chunk the text into smaller chunks (so we can embed/answer granularly)
-                text_chunks = self.chunker.chunk_text(text) if isinstance(self.chunker, Chunker) else [text]
+                text_chunks = self.chunker.chunk_text(text) if hasattr(self.chunker, "chunk_text") else [text]
                 for n, tc in enumerate(text_chunks):
+                    meta = {
+                        "ocr_block_index": idx,
+                        "ocr_chunk_index": n,
+                    }
+                    if self.session_id:
+                        meta["session_id"] = self.session_id
+
                     chunk = ChunkDoc.create(
                         text=tc,
                         modality="image",
@@ -108,10 +115,7 @@ class ImageIngestor:
                         filename=filename,
                         page_num=1,  # single-image ingest: use 1
                         bbox=bbox,
-                        meta={
-                            "ocr_block_index": idx,
-                            "ocr_chunk_index": n,
-                        },
+                        meta=meta,
                     )
                     chunks.append(chunk)
 
@@ -119,6 +123,10 @@ class ImageIngestor:
             if not chunks:
                 caption = self._caption_fallback(image_path)
                 snippet = caption or f"[image: {filename}]"
+                meta = {"caption_fallback": bool(caption)}
+                if self.session_id:
+                    meta["session_id"] = self.session_id
+
                 chunk = ChunkDoc.create(
                     text=snippet,
                     modality="image",
@@ -126,7 +134,7 @@ class ImageIngestor:
                     filename=filename,
                     page_num=1,
                     bbox=None,
-                    meta={"caption_fallback": bool(caption)},
+                    meta=meta,
                 )
                 chunks.append(chunk)
 
@@ -136,18 +144,23 @@ class ImageIngestor:
                 embeddings = self.embedder.embed_chunks(texts)
                 # attach embeddings
                 for c, emb in zip(chunks, embeddings):
-                    c.embedding = emb
+                    try:
+                        c.embedding = emb
+                    except Exception:
+                        # if chunk is dict-like
+                        if isinstance(c, dict):
+                            c["embedding"] = emb
 
             # 5) Upsert to Qdrant
             upserted_count, failed_ids = self.qdrant.upsert_chunks(chunks)
-            logger.info(f"Ingested image {filename}: upserted={upserted_count} failed={len(failed_ids)}")
+            logger.info("Ingested image %s: upserted=%s failed=%d", filename, upserted_count, len(failed_ids))
 
             # 6) Build IngestResult
             ingest_result = IngestResult(
                 file_path=image_path,
                 file_name=filename,
                 chunks_created=len(chunks),
-                chunk_ids=[c.id for c in chunks],
+                chunk_ids=[getattr(c, "id", None) or (c.get("id") if isinstance(c, dict) else None) for c in chunks],
                 errors=[str(e) for e in errors] + failed_ids,
             )
             return ingest_result
@@ -165,7 +178,6 @@ class ImageIngestor:
         Uses pytesseract's image_to_data-like interface (OCRHandler currently uses pytesseract).
         Returns list of: {"text": "...", "bbox": (x1,y1,x2,y2)}
         """
-        # We'll use pytesseract directly here to get bbox details (image_to_data)
         try:
             import pytesseract
             from pytesseract import Output
@@ -174,8 +186,6 @@ class ImageIngestor:
             blocks: List[dict] = []
 
             n_boxes = len(data.get("level", []))
-            # group by block_num or by line_num depending on what we want
-            # We'll group by block_num then by line_num fallback
             current_block_idx = None
             current_texts: List[str] = []
             current_bbox = None
@@ -196,15 +206,12 @@ class ImageIngestor:
                     current_texts = [text]
                     current_bbox = bbox
                 elif block_num != current_block_idx:
-                    # flush previous
                     blocks.append({"text": " ".join(current_texts).strip(), "bbox": current_bbox})
-                    # start new
                     current_block_idx = block_num
                     current_texts = [text]
                     current_bbox = bbox
                 else:
                     current_texts.append(text)
-                    # expand bbox
                     if current_bbox:
                         x1 = min(current_bbox[0], bbox[0])
                         y1 = min(current_bbox[1], bbox[1])
@@ -231,15 +238,8 @@ class ImageIngestor:
     def _caption_fallback(self, image_path: str) -> Optional[str]:
         """
         Optional caption fallback for images with little/no OCR text.
-        This is a placeholder. If you later add a local caption model,
-        implement the call here and return a short caption text.
-
-        For now, this returns None (no caption).
+        Placeholder: return None by default.
         """
-        # Example:
-        #   # load caption model from local cache
-        #   caption = my_caption_model.generate_caption(image_path)
-        #   return caption
         return None
 
 
@@ -248,7 +248,6 @@ class ImageIngestor:
 # ----------------------------
 if __name__ == "__main__":
     import argparse
-    import asyncio
     from loguru import logger as lu_logger
     lu_logger.add(lambda msg: print(msg, end=""))
 

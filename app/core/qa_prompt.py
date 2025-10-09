@@ -6,6 +6,9 @@ Responsibilities:
 - Build grounded prompts from retrieved chunks
 - Call local LLM via LLMClient
 - Post-process LLM output: extract citations, list used chunk ids, return structured result
+
+This version is session-aware: QAOrchestrator.ask accepts an optional session_id
+which is forwarded to the retriever so retrieval is scoped to a single session.
 """
 
 from typing import List, Dict, Any, Optional, Tuple
@@ -118,6 +121,8 @@ class QAOrchestrator:
         - builds a context using ContextBuilder and formatting helpers
         - calls LLMClient to generate an answer
         - post-processes to extract citations and used chunk ids
+
+    Now accepts optional session_id in ask() to scope retrieval to a session.
     """
 
     def __init__(
@@ -189,9 +194,10 @@ class QAOrchestrator:
             pass
         return resp
 
-    async def ask(self, question: str, top_k: int = 5, filter_meta: Optional[Dict[str, Any]] = None):
+    async def ask(self, question: str, top_k: int = 5, filter_meta: Optional[Dict[str, Any]] = None, session_id: Optional[str] = None):
         """
         Retrieve candidate chunks, build a compact context, call the LLM and return a clean answer.
+        session_id: optional string to restrict retrieval to a single session's uploaded chunks.
         Returns structure:
           {"ok": True, "query_text": question, "answer": <text>, "used_chunk_ids": [...], "citations": [...]}
         """
@@ -199,7 +205,7 @@ class QAOrchestrator:
             # 1) retrieve candidates (runs blocking retriever in threadpool)
             # retriever.retrieve should return list of dicts: {"id": ..., "score": ..., "payload": {...}, "text": ...}
             candidates: List[Dict[str, Any]] = await run_in_threadpool(
-                lambda: self.retriever.retrieve(question, top_k=top_k, filter_meta=filter_meta)
+                lambda: self.retriever.retrieve(question, top_k=top_k, filter_meta=filter_meta, session_id=session_id)
             )
 
             if not candidates:
@@ -240,6 +246,8 @@ class QAOrchestrator:
 
             # 3) Build messages using assembled helper (so formatting & truncation handled)
             messages = self._assemble_messages(question, candidates)
+            logger.info("Retrieved %d candidates. First text preview: %s", len(candidates), candidates[0].get("text")[:300] if candidates else "NONE")
+
 
             # 4) Call LLM
             llm_out = await self._call_llm(messages)
@@ -293,12 +301,12 @@ class QAOrchestrator:
 # -------------------------
 # Convenience sync wrapper
 # -------------------------
-def run_qa_sync(orchestrator: QAOrchestrator, question: str, top_k: int = 12, filter_meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def run_qa_sync(orchestrator: QAOrchestrator, question: str, top_k: int = 12, filter_meta: Optional[Dict[str, Any]] = None, session_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Synchronous wrapper to run the orchestrator.ask coroutine.
     Useful for quick CLI/script testing.
     """
-    return asyncio.run(orchestrator.ask(question, top_k=top_k, filter_meta=filter_meta))
+    return asyncio.run(orchestrator.ask(question, top_k=top_k, filter_meta=filter_meta, session_id=session_id))
 
 
 # -------------------------
@@ -341,17 +349,19 @@ if __name__ == "__main__":
     orchestrator = QAOrchestrator(retriever=retriever, context_builder=context_builder, llm_client=llm)
 
     q = os.getenv("TEST_QUERY", "What is the main point of the first document?")
-    print("Running QA for question:", q)
+    # optional session_id from env for manual testing
+    sid = os.getenv("TEST_SESSION_ID")
+    print("Running QA for question:", q, "session_id:", sid)
     try:
-        result = run_qa_sync(orchestrator, q, top_k=8)
+        result = run_qa_sync(orchestrator, q, top_k=8, session_id=sid)
         print("=== ANSWER ===")
-        print(result["answer"])
+        print(result.get("answer"))
         print("\n=== CITATIONS ===")
-        print(result["citations"])
+        print(result.get("citations"))
         print("\n=== USED CHUNKS ===")
-        print(result["used_chunk_ids"])
+        print(result.get("used_chunk_ids"))
         print("\n=== TOP RETRIEVED ===")
-        for r in result["retrieved"][:6]:
+        for r in result.get("retrieved", [])[:6]:
             print(f"- id={r.get('id')} score={r.get('score')} filename={r.get('payload',{}).get('filename')}")
     except Exception as e:
         logger.exception("QA test run failed: %s", e)
