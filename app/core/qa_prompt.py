@@ -20,22 +20,34 @@ from starlette.concurrency import run_in_threadpool
 logger = logging.getLogger("asklyne.qa")
 
 # Default system prompt: strict grounding
+# =======================
+# Improved QA Prompt Style
+# =======================
+
 DEFAULT_SYSTEM_PROMPT = (
-    "You are an assistant that must answer questions using only the information provided in the CONTEXT section.And can use some of your own brain too to structure the output in chat gpt style "
-    "Do NOT invent facts. If the answer cannot be found in the CONTEXT, say exactly: \"I don't know\". "
-    "Be friendly yet professional."
-    "Keep answers in mid range between consise and elaborative. If asked for more details, provide a short summary first and then an optional expanded section."
+    "You are Asklyne — an advanced research assistant specialized in reasoning and summarization. "
+    "Your goal is to produce **clear, structured, and insightful** responses based only on the CONTEXT provided. "
+    "However, you are encouraged to synthesize information logically, infer connections, and organize your response "
+    "in a human-like, conversational tone similar to ChatGPT — without hallucinating. "
+    "If the information isn't available, respond with: \"I guess that's something which is not in the resources you provided!\".\n\n"
+    "Follow this style:\n"
+    "- Begin with a short 1–2 sentence overview answering the question directly.\n"
+    "- Then elaborate in a few paragraphs if the context allows.\n"
+    "- Use markdown-like formatting (e.g. bullet points, numbered steps, or headers) when helpful.\n"
+    "- Always maintain factual grounding in the CONTEXT section.\n"
 )
 
-# User prompt template: injected with question + context block
 USER_PROMPT_TEMPLATE = (
     "QUESTION:\n{question}\n\n"
     "CONTEXT (use ONLY this information to answer):\n{context}\n\n"
     "INSTRUCTIONS:\n"
-    "1) Answer the QUESTION using only the CONTEXT above.\n"
-    "2) If you cannot answer fully, respond with exactly: \"I guess that's something which is not in the resources you provided!\".\n"
-    "3) Keep answer length limited to ~200 words unless the user asks for more.\n"
+    "1. Structure your answer clearly — summary first, then details.\n"
+    "2. If the question asks for a summary (e.g. 'summarize', 'explain', 'overview'), produce a well-written summary that flows naturally.\n"
+    "3. If the answer cannot be found in the context, respond exactly with:\n"
+    "   \"I guess that's something which is not in the resources you provided!\"\n"
+    "4. Prefer clarity, coherence, and useful formatting over brevity.\n"
 )
+
 
 CHUNK_FORMAT = "SOURCE: {filename}{page}{ts}{modality} | SCORE: {score}\nID: {id}\n{snippet}\n"
 
@@ -133,7 +145,7 @@ class QAOrchestrator:
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         user_template: str = USER_PROMPT_TEMPLATE,
         max_context_chunks: int = 8,
-        llm_max_tokens: int = 512,
+        llm_max_tokens: int = 2048,
         llm_temperature: float = 0.0,
     ):
         self.retriever = retriever
