@@ -1,17 +1,12 @@
 # app/ingest/image_ingestor.py
 """
 Image ingestor for Asklyne Offline (session-aware).
-
-Responsibilities:
- - Accept an image file (png/jpg/heic/...) path
- - Run OCR (OCRHandler) to extract text and bounding boxes
- - Create ChunkDoc objects per OCR block (or whole-image fallback)
- - Embed chunks via Embedder
- - Upsert chunks into Qdrant via QdrantService
- - Return an IngestResult summarizing the ingestion
+Reworked to produce explicit upsert payloads matching QdrantService.upsert_chunks:
+    {"id": <optional>, "embedding": <list[float]>, "payload": {...}}
+Ensures payload includes modality/media_type and session_id (if passed).
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import os
 import logging
 from PIL import Image
@@ -37,73 +32,47 @@ class ImageIngestor:
         qdrant: Optional[QdrantService] = None,
         ocr: Optional[OCRHandler] = None,
     ):
-        """
-        Args:
-            session_id: optional session id to tag created chunk metadata with
-            embed_mode: 'text'|'code' (passed to Embedder)
-            chunk_token_size: approx token size per chunk
-            chunk_overlap: overlap tokens
-        """
         self.session_id = session_id
         self.embed_mode = embed_mode
-        # ensure a Chunker instance exists
-        from app.core.chunker import Chunker as _Chunker  # local import to avoid circulars at top-level
-        self.chunker = _Chunker(max_tokens=chunk_token_size, overlap=chunk_overlap, file_type="text")
-        # embedder
+        # local import style retained to avoid circulars
+        from app.core.chunker import Chunker as _Chunker
         from app.core.embedder import Embedder as _Embedder
+
+        self.chunker = _Chunker(max_tokens=chunk_token_size, overlap=chunk_overlap, file_type="text")
         self.embedder = _Embedder(mode=self.embed_mode)
         self.qdrant = qdrant or QdrantService()
         self.ocr = ocr or OCRHandler()
 
-    # ----------------------------
-    # Public API
-    # ----------------------------
     def ingest_image(self, image_path: str, filename: Optional[str] = None) -> IngestResult:
-        """
-        Ingest a single image file.
-
-        Process:
-         - Run OCR to extract text and bounding boxes (line/word level)
-         - Group OCR text into reasonable chunks using Chunker
-         - Create ChunkDoc objects (include bbox & page_num metadata where possible)
-         - Embed chunk text via Embedder
-         - Upsert to Qdrant
-
-        Returns:
-            IngestResult summarizing ingestion
-        """
         filename = filename or os.path.basename(image_path)
         chunks: List[ChunkDoc] = []
         errors: List[str] = []
 
         try:
-            # 1) OCR: prefer detailed data (bbox, line-level)
+            # 1) OCR blocks
             ocr_blocks = self._ocr_blocks_from_image(image_path)
             if not ocr_blocks:
-                # fallback: try captioning or whole-image OCR text
-                logger.debug("No OCR blocks extracted; using fallback full-image OCR/caption.")
+                logger.debug("No OCR blocks; using fallback full-image OCR/caption.")
                 full_text = self.ocr.extract_text_from_image(image_path)
                 if full_text and full_text.strip():
                     ocr_blocks = [{"text": full_text.strip(), "bbox": None}]
                 else:
-                    # last resort: create an empty chunk with a placeholder snippet
                     ocr_blocks = [{"text": "", "bbox": None}]
 
-            # 2) For each block produce chunks (chunker works on long text)
+            # 2) Create chunks from blocks
             for idx, block in enumerate(ocr_blocks):
                 text = (block.get("text") or "").strip()
-                bbox = block.get("bbox")  # (x1,y1,x2,y2) or None
-
+                bbox = block.get("bbox")
                 if not text:
-                    # skip empty text blocks unless caption fallback wanted
                     continue
-
-                # chunk the text into smaller chunks (so we can embed/answer granularly)
                 text_chunks = self.chunker.chunk_text(text) if hasattr(self.chunker, "chunk_text") else [text]
                 for n, tc in enumerate(text_chunks):
-                    meta = {
+                    meta: Dict[str, Any] = {
                         "ocr_block_index": idx,
                         "ocr_chunk_index": n,
+                        "modality": "image",
+                        "media_type": "image",
+                        "is_image": True,
                     }
                     if self.session_id:
                         meta["session_id"] = self.session_id
@@ -113,20 +82,19 @@ class ImageIngestor:
                         modality="image",
                         source_path=image_path,
                         filename=filename,
-                        page_num=1,  # single-image ingest: use 1
+                        page_num=1,
                         bbox=bbox,
                         meta=meta,
                     )
                     chunks.append(chunk)
 
-            # 3) If no chunks were created (sparse OCR), try caption fallback & add as chunk
+            # 3) Caption fallback for no chunks
             if not chunks:
                 caption = self._caption_fallback(image_path)
                 snippet = caption or f"[image: {filename}]"
-                meta = {"caption_fallback": bool(caption)}
+                meta = {"caption_fallback": bool(caption), "modality": "image", "media_type": "image", "is_image": True}
                 if self.session_id:
                     meta["session_id"] = self.session_id
-
                 chunk = ChunkDoc.create(
                     text=snippet,
                     modality="image",
@@ -138,30 +106,67 @@ class ImageIngestor:
                 )
                 chunks.append(chunk)
 
-            # 4) Embed chunks in batch
+            # 4) Embed chunks
             texts = [c.text for c in chunks]
             if texts:
                 embeddings = self.embedder.embed_chunks(texts)
-                # attach embeddings
                 for c, emb in zip(chunks, embeddings):
+                    # put embedding on attribute consistently
                     try:
                         c.embedding = emb
                     except Exception:
-                        # if chunk is dict-like
+                        # fallback if chunk is dict-like
                         if isinstance(c, dict):
                             c["embedding"] = emb
 
-            # 5) Upsert to Qdrant
-            upserted_count, failed_ids = self.qdrant.upsert_chunks(chunks)
-            logger.info("Ingested image %s: upserted=%s failed=%d", filename, upserted_count, len(failed_ids))
+            # 5) Build explicit upsert payloads expected by QdrantService.upsert_chunks
+            upsert_items: List[Dict[str, Any]] = []
+            for c in chunks:
+                cid = getattr(c, "id", None) or (c.get("id") if isinstance(c, dict) else None)
+                emb = getattr(c, "embedding", None) or (c.get("embedding") if isinstance(c, dict) else None)
+                text = getattr(c, "text", None) or (c.get("text") if isinstance(c, dict) else "")
+                filename_val = getattr(c, "filename", None) or filename
+                source_path = getattr(c, "source_path", None) or image_path
+                page_num = getattr(c, "page_num", None) or 1
+                bbox_val = getattr(c, "bbox", None) or None
+                meta_val = getattr(c, "meta", None) or (c.get("meta") if isinstance(c, dict) else {})
 
-            # 6) Build IngestResult
+                payload = {
+                    "text": text,
+                    "filename": filename_val,
+                    "source_path": source_path,
+                    "page_num": page_num,
+                    "bbox": bbox_val,
+                    **(meta_val or {}),
+                }
+
+                # ensure modality/media_type/is_image exist on payload
+                payload.setdefault("modality", "image")
+                payload.setdefault("media_type", "image")
+                payload.setdefault("is_image", True)
+                if self.session_id:
+                    payload.setdefault("session_id", self.session_id)
+
+                # final item format: embedding + payload (this is what QdrantService expects)
+                item = {
+                    "id": cid,
+                    "embedding": emb,
+                    "payload": payload,
+                }
+                upsert_items.append(item)
+
+            # 6) Upsert using QdrantService
+            upserted_count, failed_ids = self.qdrant.upsert_chunks(upsert_items)
+
+            logger.info("Image ingested: file=%s chunks=%d upserted=%s failed=%s",
+                        filename, len(chunks), upserted_count, failed_ids)
+
             ingest_result = IngestResult(
                 file_path=image_path,
                 file_name=filename,
                 chunks_created=len(chunks),
                 chunk_ids=[getattr(c, "id", None) or (c.get("id") if isinstance(c, dict) else None) for c in chunks],
-                errors=[str(e) for e in errors] + failed_ids,
+                errors=[str(e) for e in []] + failed_ids,
             )
             return ingest_result
 
@@ -173,23 +178,16 @@ class ImageIngestor:
     # Helpers
     # ----------------------------
     def _ocr_blocks_from_image(self, image_path: str) -> List[dict]:
-        """
-        Use OCRHandler to produce a list of blocks with text + bbox.
-        Uses pytesseract's image_to_data-like interface (OCRHandler currently uses pytesseract).
-        Returns list of: {"text": "...", "bbox": (x1,y1,x2,y2)}
-        """
         try:
             import pytesseract
             from pytesseract import Output
             img = Image.open(image_path).convert("RGB")
             data = pytesseract.image_to_data(img, output_type=Output.DICT)
             blocks: List[dict] = []
-
             n_boxes = len(data.get("level", []))
             current_block_idx = None
-            current_texts: List[str] = []
+            current_texts = []
             current_bbox = None
-
             for i in range(n_boxes):
                 text = (data.get("text", [""] * n_boxes)[i] or "").strip()
                 if not text:
@@ -200,7 +198,6 @@ class ImageIngestor:
                 width = data.get("width", [0] * n_boxes)[i]
                 height = data.get("height", [0] * n_boxes)[i]
                 bbox = (int(left), int(top), int(left + width), int(top + height))
-
                 if current_block_idx is None:
                     current_block_idx = block_num
                     current_texts = [text]
@@ -218,42 +215,26 @@ class ImageIngestor:
                         x2 = max(current_bbox[2], bbox[2])
                         y2 = max(current_bbox[3], bbox[3])
                         current_bbox = (x1, y1, x2, y2)
-
-            # flush last block
             if current_block_idx is not None and current_texts:
                 blocks.append({"text": " ".join(current_texts).strip(), "bbox": current_bbox})
-
             return blocks
-
         except Exception as e:
-            logger.exception("Detailed OCR (image_to_data) failed for %s: %s. Falling back to simple OCR.", image_path, e)
-            # fallback: use OCRHandler's simple extractor
+            logger.exception("OCR data extraction failed for %s: %s. Falling back to OCRHandler.", image_path, e)
             try:
                 text = self.ocr.extract_text_from_image(image_path)
                 return [{"text": text, "bbox": None}] if text else []
-            except Exception as e2:
-                logger.exception("Fallback OCR also failed for %s: %s", image_path, e2)
+            except Exception:
                 return []
 
     def _caption_fallback(self, image_path: str) -> Optional[str]:
-        """
-        Optional caption fallback for images with little/no OCR text.
-        Placeholder: return None by default.
-        """
         return None
 
 
-# ----------------------------
-# Simple CLI test
-# ----------------------------
 if __name__ == "__main__":
     import argparse
-    from loguru import logger as lu_logger
-    lu_logger.add(lambda msg: print(msg, end=""))
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("image", help="Path to image file to ingest")
+    parser.add_argument("image", help="Image path")
+    parser.add_argument("--session", help="session_id", default=None)
     args = parser.parse_args()
-    ingestor = ImageIngestor()
-    result = ingestor.ingest_image(args.image)
-    print("Ingest result:", result)
+    ing = ImageIngestor(session_id=args.session)
+    print(ing.ingest_image(args.image))
