@@ -257,3 +257,77 @@ async def startup_event():
 @app.get("/health")
 async def health():
     return {"ok": True, "preloaded": _models_preloaded, "sessions": list(_sessions.keys())}
+
+
+
+
+
+# app/main.py (paste after `app = FastAPI()`)
+
+import os
+from pathlib import Path
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI
+
+# assume you already have `app = FastAPI()` above
+
+# ---------- Configurable values ----------
+# Comma-separated allowed origins (use env var to avoid code changes)
+_frontend_origins = os.getenv(
+    "FRONTEND_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
+)
+ALLOW_ALL_ORIGINS_DEV = os.getenv("ALLOW_ALL_ORIGINS_DEV", "false").lower() in ("1", "true")
+
+if ALLOW_ALL_ORIGINS_DEV:
+    allow_origins = ["*"]
+else:
+    # split and trim
+    allow_origins = [o.strip() for o in _frontend_origins.split(",") if o.strip()]
+
+# ---------- Add CORS middleware ----------
+# Add middleware before mounting static files / routers so preflight requests are handled properly
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---------- Serve static frontend ----------
+# Compute static dir relative to this file (project-root/frontend/static)
+BASE = Path(__file__).resolve().parent.parent  # adjust if your layout differs
+STATIC_DIR = BASE / "frontend" / "static"
+
+if not STATIC_DIR.exists():
+    # optional: warn in logs to help devs
+    import logging
+    logging.getLogger("uvicorn").warning(f"Static directory not found: {STATIC_DIR} (frontend static may not be served)")
+
+# Mount at root so visiting http://host:8000/ serves index.html
+app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="frontend")
+
+
+# ---------- Optional helper endpoint for runtime config ----------
+# Useful if you prefer the static page to read config instead of hardcoding API_BASE in the HTML.
+# Returns empty string for same-origin (recommended), or you can set API_BASE env var to explicit URL.
+from pydantic import BaseModel
+from fastapi import APIRouter
+
+router = APIRouter()
+
+class ConfigResp(BaseModel):
+    api_base: str
+
+@router.get("/__config", response_model=ConfigResp)
+async def get_config():
+    """
+    Returns frontend runtime config. If API is served same-origin, api_base is ''.
+    Otherwise set API_BASE env var to e.g. 'http://localhost:8000'
+    """
+    api_base = os.getenv("API_BASE", "")  # set this in env if frontend needs an explicit host
+    return {"api_base": api_base}
+
+app.include_router(router, tags=["config"])

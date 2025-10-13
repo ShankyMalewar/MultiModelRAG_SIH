@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Asklyne — Local Chat (no React)</title>
+
+  <!-- Google font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --muted:#94a3b8; --accent:#7c3aed; --glass: rgba(255,255,255,0.04);
+      --success:#16a34a; --danger:#ef4444; --surface:#071020;
+    }
+    *{box-sizing:border-box;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071026 0%, #071021 60%);color:#e6eef8}
+    .wrap{max-width:1200px;margin:28px auto;padding:20px;display:grid;grid-template-columns:1fr 360px;gap:18px}
+    .header{grid-column:1/-1;display:flex;align-items:center;gap:12px}
+    .logo{width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,#6d28d9,#4c1d95);display:flex;align-items:center;justify-content:center;font-weight:700;color:white;box-shadow:0 6px 20px rgba(76,29,149,0.25)}
+    h1{margin:0;font-size:20px}
+    p.lead{margin:0;color:var(--muted);font-size:13px}
+
+    .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;padding:14px;box-shadow:0 4px 30px rgba(2,6,23,0.7); border:1px solid rgba(255,255,255,0.02)}
+    /* left column */
+    .chatArea{display:flex;flex-direction:column;height:74vh}
+    .messages{flex:1;overflow:auto;padding:14px;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent)}
+    .msg{margin-bottom:12px;max-width:78%}
+    .msg.user{margin-left:auto;text-align:right}
+    .bubble{display:inline-block;padding:10px 12px;border-radius:10px;background:linear-gradient(180deg,#0b1220,#071226);border:1px solid rgba(255,255,255,0.02)}
+    .bubble.user{background:linear-gradient(180deg,#08304c,#063045);border:1px solid rgba(10,100,150,0.12)}
+    .meta{font-size:12px;color:var(--muted);margin-top:6px}
+
+    .composer{display:flex;gap:8px;margin-top:12px}
+    .composer input[type="text"]{flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    .composer button{background:linear-gradient(90deg,var(--accent),#4f46e5);border:none;color:white;padding:10px 14px;border-radius:8px;cursor:pointer}
+    .composer .small{width:86px;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;text-align:center}
+
+    /* right column controls */
+    .controls{display:flex;flex-direction:column;gap:12px;height:74vh}
+    .control-section{display:flex;flex-direction:column;gap:8px}
+    label{font-size:13px;color:var(--muted)}
+    .fileDrop{
+      border:2px dashed rgba(255,255,255,0.04);border-radius:10px;padding:12px;background:linear-gradient(180deg, transparent, rgba(255,255,255,0.01));
+      display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;min-height:120px;cursor:pointer
+    }
+    .fileDrop.drag{border-color:rgba(124,58,237,0.7);box-shadow:0 8px 30px rgba(124,58,237,0.08)}
+    .fileList{max-height:160px;overflow:auto;padding:6px;border-radius:8px;background:rgba(255,255,255,0.01);border:1px solid rgba(255,255,255,0.02)}
+    .fileItem{display:flex;justify-content:space-between;padding:6px 8px;border-radius:6px}
+    .btnRow{display:flex;gap:8px}
+    .btn{flex:1;padding:10px;border-radius:8px;border:none;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.03);color:var(--muted)}
+    .btn.warn{background:linear-gradient(90deg,#ef4444,#f97316);color:white}
+    .tiny{font-size:12px;color:var(--muted)}
+
+    .task{padding:8px;border-radius:8px;background:rgba(255,255,255,0.02);display:flex;justify-content:space-between;gap:8px;align-items:center}
+    .task .st{font-size:12px;padding:6px 8px;border-radius:8px}
+    .st.queued{background:rgba(255,255,255,0.02);color:var(--muted)}
+    .st.processing{background:linear-gradient(90deg,#f59e0b,#f97316);color:black}
+    .st.done{background:linear-gradient(90deg,#16a34a,#059669);color:white}
+    .st.error{background:linear-gradient(90deg,#ef4444,#f43f5e);color:white}
+
+    .small-muted{font-size:12px;color:var(--muted)}
+    footer{grid-column:1/-1;margin-top:12px;text-align:center;color:var(--muted);font-size:13px}
+    @media (max-width:980px){.wrap{grid-template-columns:1fr; padding:12px}.controls{height:auto}.chatArea{height:60vh}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div class="logo">AQ</div>
+      <div>
+        <h1>Asklyne — Local Chat</h1>
+        <p class="lead">Upload files, ingest to your local RAG backend and ask questions. No React. Single static page.</p>
+      </div>
+      <div style="margin-left:auto;text-align:right">
+        <div class="small-muted">API base:</div>
+        <div id="apiBaseLabel" class="tiny">same origin (change in script)</div>
+      </div>
+    </div>
+
+    <!-- chat column -->
+    <div class="panel chatArea">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px">
+        <input id="sessionInput" placeholder="Paste or create session id" style="padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit;width:100%" />
+        <button id="createSessionBtn" class="btn ghost" style="width:150px">Create session</button>
+        <button id="deleteSessionBtn" class="btn ghost" style="width:80px">Delete</button>
+      </div>
+
+      <div id="messages" class="messages"></div>
+
+      <div class="composer">
+        <input id="qInput" type="text" placeholder="Ask something about uploaded files..." />
+        <input id="topK" class="small" type="number" value="8" min="1" max="50" />
+        <button id="askBtn" class="btn">Ask</button>
+      </div>
+    </div>
+
+    <!-- right column controls -->
+    <div class="panel controls">
+      <div class="control-section">
+        <label>Upload files (multiple)</label>
+        <div id="drop" class="fileDrop">Drag & drop files here or click to browse<br><small class="tiny">Accepted: pdf, docx, jpg, png, mp3, wav — field name 'uploads' (multiple)</small>
+          <input id="fileInput" type="file" multiple style="display:none" />
+        </div>
+        <div id="files" class="fileList tiny"></div>
+
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+          <label style="display:flex;align-items:center;gap:8px"><input id="background" type="checkbox" checked /> Background</label>
+          <div style="flex:1"></div>
+          <button id="uploadBtn" class="btn">Upload & Ingest</button>
+        </div>
+      </div>
+
+      <div class="control-section">
+        <label>Ingest Tasks</label>
+        <div id="tasks" class="tiny" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow:auto"></div>
+      </div>
+
+      <div class="control-section">
+        <label>Quick health & notes</label>
+        <div class="tiny small-muted">This UI will POST to your FastAPI endpoints defined in app/main.py — session creation, ingest, qa and ingest_status are used. If your API runs on another origin, set <code>API_BASE</code> below and enable CORS on the server.</div>
+      </div>
+    </div>
+
+    <footer class="tiny">Save this file as <b>frontend/static/index.html</b> and serve as static files from your FastAPI app (or open locally). See instructions below.</footer>
+  </div>
+
+<script>
+/* ================== CONFIG ==================
+ * If your FastAPI server is served on the same origin as this file, leave API_BASE = ''.
+ * Otherwise set it to e.g. 'http://localhost:8000'
+ */
+const API_BASE = ''; // <-- change this if your backend is on another host: e.g. 'http://localhost:8000'
+document.getElementById('apiBaseLabel').textContent = API_BASE || 'same origin';
+
+/* ======= DOM refs ======= */
+const createBtn = document.getElementById('createSessionBtn');
+const deleteBtn = document.getElementById('deleteSessionBtn');
+const sessionInput = document.getElementById('sessionInput');
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('fileInput');
+const filesDiv = document.getElementById('files');
+const uploadBtn = document.getElementById('uploadBtn');
+const backgroundCheckbox = document.getElementById('background');
+const tasksDiv = document.getElementById('tasks');
+const messagesDiv = document.getElementById('messages');
+const qInput = document.getElementById('qInput');
+const askBtn = document.getElementById('askBtn');
+const topKInput = document.getElementById('topK');
+
+let stagedFiles = [];     // File objects selected/dropped
+let ingestTasks = {};     // task_id -> element/status
+
+/* ======== helpers ======= */
+function api(path){ return (API_BASE || '') + path; }
+function el(tag, cls){ const e=document.createElement(tag); if(cls) e.className=cls; return e; }
+function pushMessage(role, text, meta){ const box = el('div', 'msg ' + (role==='user' ? 'user':'assistant')); const b = el('div', 'bubble ' + (role==='user'?'user':'')); b.textContent = text; box.appendChild(b); if(meta){ const m=el('div','meta'); m.textContent = typeof meta === 'string' ? meta : JSON.stringify(meta); box.appendChild(m); } messagesDiv.appendChild(box); messagesDiv.scrollTop = messagesDiv.scrollHeight; }
+
+/* ======== session ======= */
+createBtn.addEventListener('click', async ()=>{
+  createBtn.disabled = true;
+  try{
+    const res = await fetch(api('/session'), { method:'POST' });
+    const j = await res.json();
+    if(j?.session_id){ sessionInput.value = j.session_id; pushMessage('system','Session created: '+j.session_id); }
+    else pushMessage('system','Unexpected session response: '+JSON.stringify(j));
+  }catch(e){ pushMessage('system','Create session error: '+e.message); }
+  createBtn.disabled = false;
+});
+
+deleteBtn.addEventListener('click', async ()=>{
+  const sid = sessionInput.value.trim();
+  if(!sid) return alert('No session id set');
+  if(!confirm('Delete session and vault files?')) return;
+  deleteBtn.disabled = true;
+  try{
+    const res = await fetch(api('/session/'+sid), { method:'DELETE' });
+    const j = await res.json();
+    if(j?.ok){ pushMessage('system','Session deleted: '+sid); sessionInput.value=''; ingestTasks={}; tasksDiv.innerHTML=''; }
+    else pushMessage('system','Delete returned: '+JSON.stringify(j));
+  }catch(e){ pushMessage('system','Delete error: '+e.message); }
+  deleteBtn.disabled = false;
+});
+
+/* ====== drag & drop + file picker ====== */
+drop.addEventListener('click', ()=> fileInput.click());
+drop.addEventListener('dragover', (e)=>{ e.preventDefault(); drop.classList.add('drag'); });
+drop.addEventListener('dragleave', ()=> drop.classList.remove('drag'));
+drop.addEventListener('drop', (e)=>{ e.preventDefault(); drop.classList.remove('drag'); handleFiles(e.dataTransfer.files); });
+
+fileInput.addEventListener('change', (e)=> handleFiles(e.target.files) );
+
+function handleFiles(list){
+  const arr = Array.from(list || []);
+  for(const f of arr){
+    stagedFiles.push(f);
+  }
+  renderFileList();
+}
+
+function renderFileList(){
+  filesDiv.innerHTML = '';
+  if(stagedFiles.length===0){ filesDiv.textContent = 'No files selected'; return; }
+  stagedFiles.forEach((f, i)=>{
+    const row = el('div','fileItem');
+    row.innerHTML = `<div style="max-width:70%">${f.name}</div><div style="min-width:85px;text-align:right;color:var(--muted)">${Math.round(f.size/1024)} KB <button data-idx="${i}" style="margin-left:8px;background:transparent;border:none;color:#f97316;cursor:pointer">✕</button></div>`;
+    filesDiv.appendChild(row);
+  });
+  // remove handler
+  filesDiv.querySelectorAll('button[data-idx]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ const idx = Number(btn.dataset.idx); stagedFiles.splice(idx,1); renderFileList(); });
+  });
+}
+
+/* ===== improved polling ===== */
+const pollers = {}; // task_id -> intervalId
+
+function addTask(task_id, file, status){
+  ingestTasks[task_id] = { task_id, file, status };
+  renderTasks();
+  // start polling automatically only if server returned real task id
+  if (task_id && !pollers[task_id]) {
+    startPollingTask(task_id);
+  }
+}
+
+function updateTask(task_id, status, msg){
+  if(!ingestTasks[task_id]) ingestTasks[task_id]={task_id,file:'',status};
+  ingestTasks[task_id].status = status;
+  ingestTasks[task_id].msg = msg;
+  renderTasks();
+}
+
+function renderTasks(){
+  tasksDiv.innerHTML = '';
+  const keys = Object.keys(ingestTasks).reverse();
+  if(keys.length===0){ tasksDiv.textContent = 'No ingest tasks yet'; return; }
+  for(const k of keys){
+    const t = ingestTasks[k];
+    const row = el('div','task');
+    const left = el('div'); left.innerHTML = `<div style="font-weight:600">${t.file? t.file.split('/').pop():'(uploaded file)'} </div><div class="small-muted">${t.task_id}</div>`;
+    const right = el('div');
+    const st = el('span','st ' + (t.status || 'queued'));
+    st.textContent = (t.status || 'queued');
+    right.appendChild(st);
+    row.appendChild(left); row.appendChild(right);
+    tasksDiv.appendChild(row);
+  }
+}
+
+/* start polling a single task (one interval per task, with backoff) */
+function startPollingTask(taskId){
+  if (pollers[taskId]) return; // already polling
+
+  let intervalMs = 3000;
+
+  const pollFn = async () => {
+    try {
+      const res = await fetch(api(`/ingest_status/${taskId}`));
+      if (!res.ok) {
+        updateTask(taskId,'error',`status fetch ${res.status}`);
+        clearInterval(pollers[taskId]); delete pollers[taskId];
+        return;
+      }
+      const j = await res.json();
+      const st = j?.status?.status || j?.status || 'unknown';
+      updateTask(taskId, st, j?.status?.msg || '');
+
+      if (st === 'queued' || st === 'processing') {
+        // back off slowly up to 10s
+        if (intervalMs < 10000) {
+          intervalMs = Math.min(10000, Math.floor(intervalMs * 1.3));
+          clearInterval(pollers[taskId]);
+          pollers[taskId] = setInterval(pollFn, intervalMs);
+        }
+        return;
+      }
+
+      // final states
+      if (st === 'done') pushMessage('system','Ingest done: ' + taskId);
+      if (st === 'error' || st === 'failed') pushMessage('system','Ingest error: ' + (j?.status?.msg||'unknown'));
+      clearInterval(pollers[taskId]); delete pollers[taskId];
+    } catch (err) {
+      console.error('poll error', err);
+      updateTask(taskId,'error',err.message);
+      if (pollers[taskId]) { clearInterval(pollers[taskId]); delete pollers[taskId]; }
+    }
+  };
+
+  pollers[taskId] = setInterval(pollFn, intervalMs);
+  // run immediately once
+  pollFn();
+}
+
+/* ===== upload & ingest ===== */
+uploadBtn.addEventListener('click', async ()=>{
+  const sid = sessionInput.value.trim();
+  if(!sid) return alert('Set or create a session first');
+
+  if(stagedFiles.length===0) return alert('Select at least one file');
+  uploadBtn.disabled = true;
+  pushMessage('user', `Uploading ${stagedFiles.length} file(s)...`);
+  try{
+    const fd = new FormData();
+    for(const f of stagedFiles) fd.append('uploads', f, f.name); // important: field name 'uploads'
+    fd.append('background', backgroundCheckbox.checked ? 'true': 'false');
+
+    const res = await fetch(api(`/session/${sid}/ingest`), { method:'POST', body: fd });
+    const j = await res.json();
+    if(!j?.ok){ pushMessage('assistant','Ingest error: '+JSON.stringify(j)); }
+    else {
+      pushMessage('assistant','Ingest request accepted. Check tasks on the right.');
+      // j.results array -> file / task_id / status or result
+      if(Array.isArray(j.results)){
+        for(const r of j.results){
+          const id = r.task_id || ('task-' + Math.random().toString(36).slice(2,9));
+          addTask(id, r.file, r.status || (r.result ? 'done' : 'queued'));
+          // startPollingTask will be called by addTask when task_id exists
+        }
+      }
+      // clear staged files on background ingest only
+      if(backgroundCheckbox.checked) stagedFiles = [];
+      renderFileList();
+    }
+  }catch(e){ pushMessage('assistant','Upload failed: '+e.message); }
+  uploadBtn.disabled = false;
+});
+
+/* ====== QA ====== */
+askBtn.addEventListener('click', async ()=>{
+  const sid = sessionInput.value.trim();
+  const q = qInput.value.trim();
+  const topk = Number(topKInput.value || 8);
+  if(!sid) return alert('Create or paste a session id first');
+  if(!q) return;
+  askBtn.disabled = true;
+  pushMessage('user', q);
+  try{
+    const body = new URLSearchParams();
+    body.append('query', q);
+    body.append('top_k', String(topk));
+    const res = await fetch(api(`/session/${sid}/qa`), { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() });
+    const j = await res.json();
+    if(j?.ok && (j.answer || j.text)){
+      const answer = j.answer || j.text || JSON.stringify(j);
+      let cit = '';
+      if(j.citations) cit = '\nCitations: ' + JSON.stringify(j.citations);
+      pushMessage('assistant', answer, cit);
+    } else {
+      pushMessage('assistant', 'QA error: ' + JSON.stringify(j));
+    }
+  }catch(e){
+    pushMessage('assistant','QA request failed: '+e.message);
+  }
+  qInput.value = '';
+  askBtn.disabled = false;
+});
+
+/* ===== init UI ===== */
+renderFileList();
+renderTasks();
+pushMessage('system','Ready — create a session or paste an existing session id.');
+
+/* Helpful: if user opens locally and API is on another host, remember to set API_BASE above and enable CORS on FastAPI. */
+</script>
+</body>
+</html>
