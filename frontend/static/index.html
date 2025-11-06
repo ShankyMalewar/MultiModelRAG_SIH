@@ -63,6 +63,7 @@
     .brand {
       display: flex;
       gap: 12px;
+      justify-content: center;
       align-items: center;
     }
     .brand .logo {
@@ -187,17 +188,91 @@
       gap: 14px;
     }
 
-    .main-header {
+    /* UPDATED HEADER STYLE (replaces old simple header) */
+    .header-with-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
       border-radius: 12px;
-      padding: 16px 18px;
-      background: linear-gradient(90deg, rgba(74,222,128,0.03), rgba(255,255,255,0.0));
+      padding: 12px 18px;
+      background: linear-gradient(90deg, rgba(74,222,128,0.06), rgba(255,255,255,0.0));
       border: 1px solid var(--border);
-      display:flex;
-      gap:12px;
-      align-items:center;
+      box-shadow: 0 6px 18px rgba(2,6,23,0.03);
     }
-    .main-header .label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.6px; font-weight:700; }
-    .main-header .title { font-size:22px; font-weight:700; margin:0; color: #0b1220; background: linear-gradient(90deg,#0f172a 0%, #065f46 100%); -webkit-background-clip:text; background-clip:text; color: transparent; }
+    /* Logo box inside header */
+
+    /* Title + tagline */
+    .header-left {
+      display:flex;
+      align-items:center;
+      gap:14px;
+      min-width:0;
+    }
+
+    /* Title */
+    .header-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: #06221a;
+      margin-right: 6px;
+      white-space: nowrap;
+    }
+    .header-tagline {
+      font-size: 13px;
+      color: var(--muted);
+      margin-left: 12px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    /* model selector container */
+    .model-select-wrap.compact { display:flex; align-items:center; gap:8px; }
+    .model-select.compact {
+      min-width: 140px;
+      padding: 7px 10px;
+      font-size: 13px;
+      border-radius: 12px;
+      border: 1px solid rgba(11,17,32,0.06);
+      background: linear-gradient(180deg,#ffffff,#f7fbf8);
+      box-shadow: 0 6px 14px rgba(16,185,129,0.03);
+      cursor: pointer;
+    }
+    .model-select-wrap {
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+
+    .model-select {
+      appearance: none;
+      -webkit-appearance: none;
+      border: 1px solid rgba(11,17,32,0.06);
+      padding: 8px 12px;
+      border-radius: 14px;
+      background: linear-gradient(180deg,#ffffff,#f7fbf8);
+      font-weight: 600;
+      font-size: 14px;
+      color: #0b1720;
+      min-width: 150px;
+      cursor: pointer;
+      box-shadow: 0 6px 14px rgba(16,185,129,0.04);
+    }
+
+    .model-badge {
+      background: var(--secondary);
+      color: white;
+      padding: 6px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      white-space:nowrap;
+    }
+
+    /* legacy main-header title fallback styles (kept minimal) */
+    .main-header .muted { color: var(--muted); }
 
     .chat-card {
       background: var(--card);
@@ -279,11 +354,89 @@
     }
 
     .muted { color: var(--muted); font-size:13px; }
+/* Header single-line layout tweaks */
+.header-with-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 12px;
+  padding: 12px 18px;
+  background: linear-gradient(90deg, rgba(74,222,128,0.06), rgba(255,255,255,0.0));
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 18px rgba(2,6,23,0.03);
+}
+
+/* left cluster containing logo + title + select */
+.header-left {
+  display:flex;
+  align-items:center;
+  gap:14px;
+  min-width:0;
+}
+
+/* Title */
+.header-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #06221a;
+  margin-right: 6px;
+  white-space: nowrap;
+}
+
+/* compact model select styling (smaller look) */
+.model-select-wrap.compact { display:flex; align-items:center; gap:8px; }
+.model-select.compact {
+  min-width: 140px;
+  padding: 7px 10px;
+  font-size: 13px;
+  border-radius: 12px;
+  border: 1px solid rgba(11,17,32,0.06);
+  background: linear-gradient(180deg,#ffffff,#f7fbf8);
+  box-shadow: 0 6px 14px rgba(16,185,129,0.03);
+  cursor: pointer;
+}
+
+/* version badge (compact) */
+.model-badge {
+  background: var(--secondary);
+  color: white;
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  white-space:nowrap;
+}
+
+/* tagline aligned to right of header-left on same line */
+.header-tagline {
+  font-size: 13px;
+  color: var(--muted);
+  margin-left: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* responsiveness: shrink gracefully */
+    @media (max-width: 980px) {
+      .header-with-controls { flex-direction: row; gap: 10px; padding: 10px; }
+      .header-title { font-size: 18px; }
+      .model-select.compact { min-width: 120px; font-size: 13px; }
+      .header-tagline { font-size: 12px; opacity:0.95; white-space: normal; }
+    }
+
+    /* if you want the tagline to ellipsize on small screens, use:
+    .header-tagline { overflow: hidden; text-overflow: ellipsis; max-width: 38%; }
+    */
 
     @media (max-width: 980px) {
       .app { flex-direction: column; padding: 12px; height: auto; }
       .sidebar { width: 100%; max-width: 100%; }
       .chat-card { height: calc(100vh - 240px); }
+      .header-with-controls { flex-direction: column; align-items:flex-start; gap:10px; }
     }
 
     /* custom scrollbar for sidebar and chat-body */
@@ -296,13 +449,18 @@
       font-weight: 700;
       margin: 12px 0 6px;
     }
-    .bubble.assistant p { margin: 6px 0; }
+    .bubble.assistant h1 { font-size: 20px; }
+    .bubble.assistant h2 { font-size: 18px; }
+    .bubble.assistant h3 { font-size: 16px; }
+    .bubble.assistant p { margin: 6px 0; color: #133735; }
     .bubble.assistant ul, .bubble.assistant ol {
-      margin: 6px 0 6px 0px;
-      padding-left: 16px;
+      margin: 6px 0 6px 18px;
+      padding-left: 6px;
+      color: #133735;
     }
-    .bubble.assistant li { margin: 3px 0; }
+    .bubble.assistant li { margin: 6px 0; }
     .bubble.assistant strong { font-weight: 700; }
+    .bubble.assistant b { font-weight: 700; color: #0b2a22; }
     .bubble.assistant code {
       background: rgba(11,17,32,0.04);
       padding: 2px 6px;
@@ -330,10 +488,10 @@
           <img src="logo.png" alt="Asklyne Logo" />
         </div>
 
-        <div>
+        <!-- <div>
           <div class="title">Asklyne</div>
           <div class="subtitle small-muted">A step towards innovation!</div>
-        </div>
+        </div> -->
       </div>
 
       <div class="sidebar-inner">
@@ -382,12 +540,33 @@
 
     <!-- MAIN CHAT -->
     <main class="main" role="main">
-      <div class="main-header">
-        <div>
-          <div class="title">Asklyne Assistant</div>
-          <div class="muted" style="margin-top:6px; font-size:13px">India's safest Multimodel RAG system. Chat Now!</div>
+      <!-- REPLACED HEADER: logo + model dropdown + title + tagline (only UI changes) -->
+      <!-- ===== new header (replace previous header-with-controls block) ===== -->
+      <div class="header-with-controls" role="banner" aria-label="App header">
+        <div class="header-left" style="display:flex;align-items:center;gap:14px;min-width:0;">
+     
+
+          <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+            <div class="header-title" style="white-space:nowrap; margin-right: 150px;">Asklyne Assistant</div>
+
+            <!-- compact version control -->
+            <div class="model-select-wrap compact" style="display:flex;align-items:center;gap:8px;">
+              <select id="modelSelect" class="model-select compact" aria-label="Choose model" title="Choose model">
+                <option value="asklyne:v0.5" selected>Asklyne v0.5</option>
+                <option value="asklyne:v1" disabled>Asklyne v1 (coming soon)</option>
+              </select>
+              <span class="model-badge" id="modelBadge">v0.2</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- tagline sits on same row (will shrink on small screens) -->
+        <div class="header-tagline" style="margin-left:12px;white-space:nowrap;opacity:0.95;">
+          India's safest Multimodel RAG system. Chat Now!
         </div>
       </div>
+      <!-- ===== end header replacement ===== -->
+
 
       <div class="chat-card" aria-live="polite">
         <div id="chatBody" class="chat-body" tabindex="0" aria-label="Conversation"></div>
@@ -449,24 +628,44 @@ const askBtn = document.getElementById('askBtn');
 let pendingFiles = [];
 
 /* Append bubble with Markdown rendering for assistant */
+/* Append bubble with Markdown rendering for assistant */
 function appendBubble(text, role='assistant', opts={}) {
   const el = document.createElement('div');
   el.className = 'bubble ' + (opts.className || (role === 'user' ? 'user' : role === 'status' ? 'status' : 'assistant'));
   if (opts.id) el.dataset.statusId = opts.id;
 
   if (role === 'assistant') {
-    // render markdown to HTML using marked
-    // NOTE: marked output is inserted as HTML — your backend content is model-generated.
-    el.innerHTML = marked.parse(String(text));
+    // If server already returned HTML (contains tags) insert it directly.
+    // Otherwise, parse as Markdown.
+    const str = String(text || '');
+    const containsHtmlTags = /<\s*[a-z][\s\S]*>/i.test(str); // simple HTML detection
+    const looksLikeMarkdown = /(^#{1,6}\s)|(^\s*-\s+)|(\*\*.+\*\*)|(^\s*\d+\.\s+)/m.test(str);
+
+    try {
+      if (containsHtmlTags && !looksLikeMarkdown) {
+        // Already HTML: insert as-is
+        el.innerHTML = str;
+      } else {
+        // Otherwise treat as Markdown and render (marked handles plain text too)
+        // Use marked.parse to convert to HTML
+        el.innerHTML = marked.parse(str);
+      }
+    } catch (err) {
+      // fallback: escape and show plain text if parsing fails
+      console.error('render error', err);
+      el.textContent = str;
+    }
   } else {
     // user or status -> plain text
     el.textContent = text;
   }
 
   chatBody.appendChild(el);
+  // keep scroll pinned to bottom
   chatBody.scrollTop = chatBody.scrollHeight;
   return el;
 }
+
 
 function pushSystem(text) { appendBubble(text, 'assistant'); }
 function pushUser(text) { appendBubble(text, 'user'); }
@@ -704,6 +903,35 @@ document.querySelectorAll('.sidebar-inner, .chat-body').forEach(el => {
     if (e.key === 'ArrowUp') { el.scrollTop -= 40; e.preventDefault(); }
   });
 });
+
+/* ====== Small header UI wiring (non-breaking) ======
+   - keeps a badge synced to the select.
+   - stores user's selection to window.__asklyne_selected_model (not sent anywhere by default)
+*/
+// header model wiring: keep badge synced, no backend calls
+(function(){
+  const modelSelect = document.getElementById('modelSelect');
+  const modelBadge = document.getElementById('modelBadge');
+  if (!modelSelect || !modelBadge) return;
+
+  function updateBadge() {
+    const val = modelSelect.value || '';
+    // show short version like v0.2 or text inside option parentheses if disabled
+    let m = val.match(/v\d+(\.\d+)?/i);
+    modelBadge.textContent = m ? m[0] : (val.split(':').pop() || 'v?');
+  }
+
+  modelSelect.addEventListener('change', () => {
+    updateBadge();
+    window.__asklyne_selected_model = modelSelect.value || 'asklyne:v0.2';
+    // subtle feedback
+    try { modelBadge.animate([{ transform: 'scale(.98)' }, { transform: 'scale(1)' }], { duration: 140 }); } catch(e){}
+  });
+
+  // init
+  window.__asklyne_selected_model = modelSelect.value || 'asklyne:v0.2';
+  updateBadge();
+})();
 
 /* init */
 pushSystem('Lets begin the chat, MASTER 👍');
