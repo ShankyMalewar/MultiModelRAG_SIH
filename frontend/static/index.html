@@ -3,366 +3,710 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Asklyne — Local Chat (no React)</title>
-
-  <!-- Google font -->
+  <title>Aspire — Minimal Chat</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-
   <style>
     :root{
-      --bg:#0f1724; --card:#0b1220; --muted:#94a3b8; --accent:#7c3aed; --glass: rgba(255,255,255,0.04);
-      --success:#16a34a; --danger:#ef4444; --surface:#071020;
+      --bg: #f6fbf8;
+      --card: #ffffff;
+      --muted: #64748b;
+      --primary: #0b1220;
+      --secondary: #4ade80; /* requested color */
+      --glass: rgba(11,17,32,0.03);
+      --border: rgba(11,17,32,0.06);
+      --accent: rgba(74,222,128,0.12);
+      --radius: 16px;
+      --transition-fast: 160ms;
+      --transition-medium: 220ms;
     }
-    *{box-sizing:border-box;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
-    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071026 0%, #071021 60%);color:#e6eef8}
-    .wrap{max-width:1200px;margin:28px auto;padding:20px;display:grid;grid-template-columns:1fr 360px;gap:18px}
-    .header{grid-column:1/-1;display:flex;align-items:center;gap:12px}
-    .logo{width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,#6d28d9,#4c1d95);display:flex;align-items:center;justify-content:center;font-weight:700;color:white;box-shadow:0 6px 20px rgba(76,29,149,0.25)}
-    h1{margin:0;font-size:20px}
-    p.lead{margin:0;color:var(--muted);font-size:13px}
-
-    .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;padding:14px;box-shadow:0 4px 30px rgba(2,6,23,0.7); border:1px solid rgba(255,255,255,0.02)}
-    /* left column */
-    .chatArea{display:flex;flex-direction:column;height:74vh}
-    .messages{flex:1;overflow:auto;padding:14px;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent)}
-    .msg{margin-bottom:12px;max-width:78%}
-    .msg.user{margin-left:auto;text-align:right}
-    .bubble{display:inline-block;padding:10px 12px;border-radius:10px;background:linear-gradient(180deg,#0b1220,#071226);border:1px solid rgba(255,255,255,0.02)}
-    .bubble.user{background:linear-gradient(180deg,#08304c,#063045);border:1px solid rgba(10,100,150,0.12)}
-    .meta{font-size:12px;color:var(--muted);margin-top:6px}
-
-    .composer{display:flex;gap:8px;margin-top:12px}
-    .composer input[type="text"]{flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
-    .composer button{background:linear-gradient(90deg,var(--accent),#4f46e5);border:none;color:white;padding:10px 14px;border-radius:8px;cursor:pointer}
-    .composer .small{width:86px;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;text-align:center}
-
-    /* right column controls */
-    .controls{display:flex;flex-direction:column;gap:12px;height:74vh}
-    .control-section{display:flex;flex-direction:column;gap:8px}
-    label{font-size:13px;color:var(--muted)}
-    .fileDrop{
-      border:2px dashed rgba(255,255,255,0.04);border-radius:10px;padding:12px;background:linear-gradient(180deg, transparent, rgba(255,255,255,0.01));
-      display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;min-height:120px;cursor:pointer
+    * { box-sizing: border-box; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--primary);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden; /* columns scroll internally */
     }
-    .fileDrop.drag{border-color:rgba(124,58,237,0.7);box-shadow:0 8px 30px rgba(124,58,237,0.08)}
-    .fileList{max-height:160px;overflow:auto;padding:6px;border-radius:8px;background:rgba(255,255,255,0.01);border:1px solid rgba(255,255,255,0.02)}
-    .fileItem{display:flex;justify-content:space-between;padding:6px 8px;border-radius:6px}
-    .btnRow{display:flex;gap:8px}
-    .btn{flex:1;padding:10px;border-radius:8px;border:none;cursor:pointer}
-    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.03);color:var(--muted)}
-    .btn.warn{background:linear-gradient(90deg,#ef4444,#f97316);color:white}
-    .tiny{font-size:12px;color:var(--muted)}
 
-    .task{padding:8px;border-radius:8px;background:rgba(255,255,255,0.02);display:flex;justify-content:space-between;gap:8px;align-items:center}
-    .task .st{font-size:12px;padding:6px 8px;border-radius:8px}
-    .st.queued{background:rgba(255,255,255,0.02);color:var(--muted)}
-    .st.processing{background:linear-gradient(90deg,#f59e0b,#f97316);color:black}
-    .st.done{background:linear-gradient(90deg,#16a34a,#059669);color:white}
-    .st.error{background:linear-gradient(90deg,#ef4444,#f43f5e);color:white}
+    /* Top-level layout */
+    .app {
+      display: flex;
+      gap: 24px;
+      padding: 22px;
+      height: 100vh;
+      align-items: stretch;
+    }
 
-    .small-muted{font-size:12px;color:var(--muted)}
-    footer{grid-column:1/-1;margin-top:12px;text-align:center;color:var(--muted);font-size:13px}
-    @media (max-width:980px){.wrap{grid-template-columns:1fr; padding:12px}.controls{height:auto}.chatArea{height:60vh}}
+    /* ---------- LEFT SIDEBAR ---------- */
+    .sidebar {
+      width: 340px;
+      min-width: 280px;
+      max-width: 380px;
+      background: linear-gradient(180deg, rgba(74,222,128,0.03), rgba(255,255,255,0.01));
+      border-radius: 16px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      box-shadow: 0 10px 30px rgba(2,6,23,0.03);
+    }
+
+    /* inner scroll region in sidebar */
+    .sidebar-inner {
+      overflow-y: auto;
+      padding-right: 6px;
+      max-height: calc(100vh - 120px);
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .brand .logo {
+      width: 70px;
+      height: 70px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none; /* remove green background */
+      padding: 0;
+    }
+
+    .brand .logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain; /* keeps aspect ratio clean */
+    }
+
+    .brand .title { font-size: 18px; font-weight: 700; margin:0; }
+    .brand .subtitle { margin:0; font-size: 13px; color: var(--muted); }
+
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding-left: 14px;
+      padding-bottom:  16px;
+      padding-right: 14px;
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 22px rgba(16,185,129,0.03);
+    }
+
+    .session-card h4 {
+      margin-bottom: 6px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .session-card p {
+      /* margin: 0 0 10px; */
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .session-input {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg,#fff,#fbfbfb);
+      font-size: 14px;
+      margin-bottom: 10px; /* 👈 adds proper spacing before buttons */
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 4px; /* 👈 small top margin for breathing space */
+    }
+
+    .row.space {
+      justify-content: space-between;
+      margin-top: 8px; /* 👈 separates from buttons */
+    }
+
+    .btn {
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 0;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn.primary {
+      background: var(--secondary);
+      color: white;
+      box-shadow: 0 10px 28px rgba(74,222,128,0.12);
+    }
+    .btn.ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--primary);
+    }
+
+    .upload-card { display:flex; flex-direction:column; gap:12px; padding:12px; border-radius:12px; border: 1px solid var(--border); background: var(--card); }
+    .drop {
+      border: 2px dashed rgba(11,17,32,0.06);
+      border-radius: 12px;
+      text-align: center;
+      padding: 22px;
+      cursor: pointer;
+      transition: box-shadow var(--transition-fast), transform var(--transition-fast);
+      background: linear-gradient(180deg, rgba(74,222,128,0.02), rgba(255,255,255,0.0));
+    }
+    .drop:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(16,185,129,0.06); }
+    .drop h4 { margin: 0; font-size: 16px; }
+    .drop p { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+
+    .file-list {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 220px;
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+    .file-row {
+      display:flex; justify-content:space-between; align-items:center;
+      padding:10px; border-radius:10px; background: rgba(11,17,32,0.02);
+      font-size: 13px;
+    }
+
+    .small-muted { color: var(--muted); font-size: 13px; }
+
+    /* ---------- MAIN (chat) ---------- */
+    .main {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .main-header {
+      border-radius: 12px;
+      padding: 16px 18px;
+      background: linear-gradient(90deg, rgba(74,222,128,0.03), rgba(255,255,255,0.0));
+      border: 1px solid var(--border);
+      display:flex;
+      gap:12px;
+      align-items:center;
+    }
+    .main-header .label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.6px; font-weight:700; }
+    .main-header .title { font-size:22px; font-weight:700; margin:0; color: #0b1220; background: linear-gradient(90deg,#0f172a 0%, #065f46 100%); -webkit-background-clip:text; background-clip:text; color: transparent; }
+
+    .chat-card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 30px rgba(2,6,23,0.04);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+      height: calc(100vh - 170px);
+    }
+
+    .chat-body {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-right: 8px;
+      min-height: 0;
+    }
+
+    .bubble {
+      display: inline-block;
+      max-width: 76%;
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-size: 15px;
+      line-height: 1.45;
+      word-wrap: break-word; 
+      /* white-space: pre-wrap;  */
+    }
+    .bubble.assistant {
+      background: #f7fbfa;
+      border: 1px solid rgba(11,17,32,0.04);
+      align-self: flex-start;
+      color: #18323a;
+    }
+    .bubble.user {
+      background: linear-gradient(180deg,#7ef3a1,#3bd06b);
+      color: #06220b;
+      align-self: flex-end;
+      border-radius: 18px;
+    }
+    .bubble.status {
+      background: linear-gradient(180deg,#ecfff2,#cffee0);
+      color: #065f3a;
+      font-weight:600;
+      align-self: flex-start;
+    }
+
+    .composer {
+      display:flex;
+      gap:12px;
+      align-items:center;
+      padding-top:6px;
+    }
+    .composer .input {
+      flex:1;
+      border-radius: 999px;
+      background: var(--glass);
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      display:flex;
+      align-items:center;
+    }
+    .composer input { border:0; outline:0; width:100%; font-size:15px; background:transparent; }
+
+    .btn-send {
+      background: var(--secondary);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 999px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .muted { color: var(--muted); font-size:13px; }
+
+    @media (max-width: 980px) {
+      .app { flex-direction: column; padding: 12px; height: auto; }
+      .sidebar { width: 100%; max-width: 100%; }
+      .chat-card { height: calc(100vh - 240px); }
+    }
+
+    /* custom scrollbar for sidebar and chat-body */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(11,17,32,0.06); border-radius: 8px; }
+
+    /* Markdown styles inside assistant bubble */
+    .bubble.assistant h1, .bubble.assistant h2, .bubble.assistant h3 {
+      font-weight: 700;
+      margin: 12px 0 6px;
+    }
+    .bubble.assistant p { margin: 6px 0; }
+    .bubble.assistant ul, .bubble.assistant ol {
+      margin: 6px 0 6px 0px;
+      padding-left: 16px;
+    }
+    .bubble.assistant li { margin: 3px 0; }
+    .bubble.assistant strong { font-weight: 700; }
+    .bubble.assistant code {
+      background: rgba(11,17,32,0.04);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.95em;
+    }
+    .bubble.assistant pre {
+      background: rgba(11,17,32,0.03);
+      padding: 8px 10px;
+      border-radius: 8px;
+      overflow-x:auto;
+      font-family: monospace;
+      font-size: 13px;
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="header">
-      <div class="logo">AQ</div>
-      <div>
-        <h1>Asklyne — Local Chat</h1>
-        <!-- <p class="lead">Upload files, ingest to your local RAG backend and ask questions. No React. Single static page.</p> -->
-      </div>
-      <div style="margin-left:auto;text-align:right">
-        <div class="small-muted">API base:</div>
-        <div id="apiBaseLabel" class="tiny">same origin (change in script)</div>
-      </div>
-    </div>
+  <div class="app">
 
-    <!-- chat column -->
-    <div class="panel chatArea">
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px">
-        <input id="sessionInput" placeholder="Paste or create session id" style="padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit;width:100%" />
-        <button id="createSessionBtn" class="btn ghost" style="width:150px">Create session</button>
-        <button id="deleteSessionBtn" class="btn ghost" style="width:80px">Delete</button>
-      </div>
-
-      <div id="messages" class="messages"></div>
-
-      <div class="composer">
-        <input id="qInput" type="text" placeholder="Ask something about uploaded files..." />
-        <input id="topK" class="small" type="number" value="8" min="1" max="50" />
-        <button id="askBtn" class="btn">Ask</button>
-      </div>
-    </div>
-
-    <!-- right column controls -->
-    <div class="panel controls">
-      <div class="control-section">
-        <label>Upload files (multiple)</label>
-        <div id="drop" class="fileDrop">Drag & drop files here or click to browse<br><small class="tiny">Accepted: pdf, docx, jpg, png, mp3, wav — field name 'uploads' (multiple)</small>
-          <input id="fileInput" type="file" multiple style="display:none" />
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar" aria-label="Controls">
+      <div class="brand">
+        <div class="logo">
+          <img src="logo.png" alt="Asklyne Logo" />
         </div>
-        <div id="files" class="fileList tiny"></div>
 
-        <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
-          <label style="display:flex;align-items:center;gap:8px"><input id="background" type="checkbox" checked /> Background</label>
-          <div style="flex:1"></div>
-          <button id="uploadBtn" class="btn">Upload & Ingest</button>
+        <div>
+          <div class="title">Asklyne</div>
+          <div class="subtitle small-muted">A step towards innovation!</div>
         </div>
       </div>
 
-      <div class="control-section">
-        <label>Ingest Tasks</label>
-        <div id="tasks" class="tiny" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow:auto"></div>
+      <div class="sidebar-inner">
+        <!-- Session card -->
+        <div class="card session-card" aria-label="Session">
+          <div>
+            <h4 style="padding: 3px,3px;">Session</h4>
+            <p class="muted">Create or paste a session id to scope uploads and QA.</p>
+          </div>
+          <input id="sessionInput" class="session-input" placeholder="Paste or create session id" aria-label="session id" , style="margin: 3px, 3px;"/>
+          <div class="row">
+            <button id="createSessionBtn" class="btn primary">Create</button>
+            <button id="deleteSessionBtn" class="btn ghost">Delete</button>
+            <button id="copySessionBtn" class="btn ghost" title="Copy session">Copy</button>
+          </div>
+          <div class="row space">
+            <div class="muted">Active session:</div>
+            <div id="sessionIndicator" class="muted">—</div>
+          </div>
+        </div>
+
+        <!-- Upload card -->
+        <div class="upload-card card" aria-label="Upload files">
+          <div id="dropArea" class="drop" role="button" tabindex="0">
+            <h4>Drop files here or click to browse</h4>
+            <p>PDF, DOCX, JPG, PNG, MP3 — files can be uploaded to the active session</p>
+          </div>
+
+          <div id="fileList" class="file-list" aria-live="polite"></div>
+
+          <div class="row space">
+            <label style="display:flex;gap:8px;align-items:center">
+              <input id="background" type="checkbox" checked />
+              <span class="muted">Background</span>
+            </label>
+            <div style="display:flex;gap:10px;">
+              <button id="ingestBtn" class="btn primary">Start Ingest</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="height: 18px;"></div>
+        <div class="small-muted">All the responses ae purely based on the resources provided!</div>
+      </div>
+    </aside>
+
+    <!-- MAIN CHAT -->
+    <main class="main" role="main">
+      <div class="main-header">
+        <div>
+          <div class="title">Asklyne Assistant</div>
+          <div class="muted" style="margin-top:6px; font-size:13px">India's safest Multimodel RAG system. Chat Now!</div>
+        </div>
       </div>
 
-      <div class="control-section">
-        <label>Quick health & notes</label>
-        <div class="tiny small-muted">This UI will POST to your FastAPI endpoints defined in app/main.py — session creation, ingest, qa and ingest_status are used. If your API runs on another origin, set <code>API_BASE</code> below and enable CORS on the server.</div>
-      </div>
-    </div>
+      <div class="chat-card" aria-live="polite">
+        <div id="chatBody" class="chat-body" tabindex="0" aria-label="Conversation"></div>
 
-    <!-- <footer class="tiny">Save this file as <b>frontend/static/index.html</b> and serve as static files from your FastAPI app (or open locally). See instructions below.</footer> -->
+        <div class="composer" role="region" aria-label="Composer">
+          <div class="input">
+            <input id="qInput" placeholder="Ask me anything..." autocomplete="off" />
+          </div>
+          <button id="askBtn" class="btn-send">Send</button>
+        </div>
+      </div>
+    </main>
   </div>
 
-<script>
-/* ================== CONFIG ==================
- * If your FastAPI server is served on the same origin as this file, leave API_BASE = ''.
- * Otherwise set it to e.g. 'http://localhost:8000'
- */
-const API_BASE = ''; // <-- change this if your backend is on another host: e.g. 'http://localhost:8000'
-document.getElementById('apiBaseLabel').textContent = API_BASE || 'same origin';
+  <!-- hidden file input -->
+  <input id="filepicker" type="file" multiple class="hidden" aria-hidden="true" />
 
-/* ======= DOM refs ======= */
-const createBtn = document.getElementById('createSessionBtn');
-const deleteBtn = document.getElementById('deleteSessionBtn');
-const sessionInput = document.getElementById('sessionInput');
-const drop = document.getElementById('drop');
-const fileInput = document.getElementById('fileInput');
-const filesDiv = document.getElementById('files');
-const uploadBtn = document.getElementById('uploadBtn');
+  <!-- marked (Markdown renderer) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    // configure marked a bit
+    marked.setOptions({
+      gfm: true,
+      breaks: false,
+      headerIds: false,
+      mangle: false
+    });
+  </script>
+
+<script>
+/*
+  Frontend logic (unchanged endpoints):
+  - file upload & session create/delete/copy
+  - ingest: submit to /session/{sid}/ingest
+  - poll /ingest_status/{task_id} if task_id returned
+  - render assistant answers as Markdown (via marked)
+*/
+
+const API_BASE = '';
+const api = (p) => (API_BASE || '') + p;
+
+/* DOM */
+const filepicker = document.getElementById('filepicker');
+const dropArea = document.getElementById('dropArea');
+const fileList = document.getElementById('fileList');
+const ingestBtn = document.getElementById('ingestBtn');
 const backgroundCheckbox = document.getElementById('background');
-const tasksDiv = document.getElementById('tasks');
-const messagesDiv = document.getElementById('messages');
+
+const sessionInput = document.getElementById('sessionInput');
+const createSessionBtn = document.getElementById('createSessionBtn');
+const deleteSessionBtn = document.getElementById('deleteSessionBtn');
+const copySessionBtn = document.getElementById('copySessionBtn');
+const sessionIndicator = document.getElementById('sessionIndicator');
+
+const chatBody = document.getElementById('chatBody');
 const qInput = document.getElementById('qInput');
 const askBtn = document.getElementById('askBtn');
-const topKInput = document.getElementById('topK');
 
-let stagedFiles = [];     // File objects selected/dropped
-let ingestTasks = {};     // task_id -> element/status
+let pendingFiles = [];
 
-/* ======== helpers ======= */
-function api(path){ return (API_BASE || '') + path; }
-function el(tag, cls){ const e=document.createElement(tag); if(cls) e.className=cls; return e; }
-function pushMessage(role, text, meta){ const box = el('div', 'msg ' + (role==='user' ? 'user':'assistant')); const b = el('div', 'bubble ' + (role==='user'?'user':'')); b.textContent = text; box.appendChild(b); if(meta){ const m=el('div','meta'); m.textContent = typeof meta === 'string' ? meta : JSON.stringify(meta); box.appendChild(m); } messagesDiv.appendChild(box); messagesDiv.scrollTop = messagesDiv.scrollHeight; }
+/* Append bubble with Markdown rendering for assistant */
+function appendBubble(text, role='assistant', opts={}) {
+  const el = document.createElement('div');
+  el.className = 'bubble ' + (opts.className || (role === 'user' ? 'user' : role === 'status' ? 'status' : 'assistant'));
+  if (opts.id) el.dataset.statusId = opts.id;
 
-/* ======== session ======= */
-createBtn.addEventListener('click', async ()=>{
-  createBtn.disabled = true;
-  try{
-    const res = await fetch(api('/session'), { method:'POST' });
-    const j = await res.json();
-    if(j?.session_id){ sessionInput.value = j.session_id; pushMessage('system','Session created: '+j.session_id); }
-    else pushMessage('system','Unexpected session response: '+JSON.stringify(j));
-  }catch(e){ pushMessage('system','Create session error: '+e.message); }
-  createBtn.disabled = false;
-});
-
-deleteBtn.addEventListener('click', async ()=>{
-  const sid = sessionInput.value.trim();
-  if(!sid) return alert('No session id set');
-  if(!confirm('Delete session and vault files?')) return;
-  deleteBtn.disabled = true;
-  try{
-    const res = await fetch(api('/session/'+sid), { method:'DELETE' });
-    const j = await res.json();
-    if(j?.ok){ pushMessage('system','Session deleted: '+sid); sessionInput.value=''; ingestTasks={}; tasksDiv.innerHTML=''; }
-    else pushMessage('system','Delete returned: '+JSON.stringify(j));
-  }catch(e){ pushMessage('system','Delete error: '+e.message); }
-  deleteBtn.disabled = false;
-});
-
-/* ====== drag & drop + file picker ====== */
-drop.addEventListener('click', ()=> fileInput.click());
-drop.addEventListener('dragover', (e)=>{ e.preventDefault(); drop.classList.add('drag'); });
-drop.addEventListener('dragleave', ()=> drop.classList.remove('drag'));
-drop.addEventListener('drop', (e)=>{ e.preventDefault(); drop.classList.remove('drag'); handleFiles(e.dataTransfer.files); });
-
-fileInput.addEventListener('change', (e)=> handleFiles(e.target.files) );
-
-function handleFiles(list){
-  const arr = Array.from(list || []);
-  for(const f of arr){
-    stagedFiles.push(f);
+  if (role === 'assistant') {
+    // render markdown to HTML using marked
+    // NOTE: marked output is inserted as HTML — your backend content is model-generated.
+    el.innerHTML = marked.parse(String(text));
+  } else {
+    // user or status -> plain text
+    el.textContent = text;
   }
+
+  chatBody.appendChild(el);
+  chatBody.scrollTop = chatBody.scrollHeight;
+  return el;
+}
+
+function pushSystem(text) { appendBubble(text, 'assistant'); }
+function pushUser(text) { appendBubble(text, 'user'); }
+function pushAssistant(text) { appendBubble(text, 'assistant'); }
+function pushStatus(text, id=null) { return appendBubble(text, 'status', { id }); }
+
+/* File handling */
+filepicker.addEventListener('change', () => handleFiles(filepicker.files));
+dropArea.addEventListener('click', () => filepicker.click());
+['dragenter','dragover'].forEach(e => dropArea.addEventListener(e, ev => { ev.preventDefault(); dropArea.style.boxShadow = '0 8px 22px rgba(16,185,129,0.06)'; }));
+['dragleave','drop'].forEach(e => dropArea.addEventListener(e, ev => { ev.preventDefault(); dropArea.style.boxShadow = ''; }));
+dropArea.addEventListener('drop', (ev) => { ev.preventDefault(); handleFiles(ev.dataTransfer.files); });
+
+function handleFiles(list) {
+  for (const f of list) pendingFiles.push(f);
   renderFileList();
 }
-
-function renderFileList(){
-  filesDiv.innerHTML = '';
-  if(stagedFiles.length===0){ filesDiv.textContent = 'No files selected'; return; }
-  stagedFiles.forEach((f, i)=>{
-    const row = el('div','fileItem');
-    row.innerHTML = `<div style="max-width:70%">${f.name}</div><div style="min-width:85px;text-align:right;color:var(--muted)">${Math.round(f.size/1024)} KB <button data-idx="${i}" style="margin-left:8px;background:transparent;border:none;color:#f97316;cursor:pointer">✕</button></div>`;
-    filesDiv.appendChild(row);
+function renderFileList() {
+  fileList.innerHTML = '';
+  pendingFiles.forEach((f, idx) => {
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    const left = document.createElement('div');
+    left.style.maxWidth = '220px';
+    left.style.overflow = 'hidden';
+    left.style.textOverflow = 'ellipsis';
+    left.textContent = f.name;
+    const controls = document.createElement('div');
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn ghost';
+    removeBtn.textContent = 'Remove';
+    removeBtn.onclick = () => { pendingFiles.splice(idx, 1); renderFileList(); };
+    controls.appendChild(removeBtn);
+    row.appendChild(left);
+    row.appendChild(controls);
+    fileList.appendChild(row);
   });
-  // remove handler
-  filesDiv.querySelectorAll('button[data-idx]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{ const idx = Number(btn.dataset.idx); stagedFiles.splice(idx,1); renderFileList(); });
-  });
 }
 
-/* ===== improved polling ===== */
-const pollers = {}; // task_id -> intervalId
+/* Session helpers */
+createSessionBtn.addEventListener('click', async () => {
+  createSessionBtn.disabled = true;
+  try {
+    const res = await fetch(api('/session'), { method: 'POST' });
+    const j = await res.json();
+    if (j?.session_id) {
+      sessionInput.value = j.session_id;
+      sessionIndicator.textContent = j.session_id.slice(0,8) + '…';
+      pushSystem('Session created');
+    } else {
+      pushSystem('Create failed (no session id returned)');
+    }
+  } catch (err) {
+    console.error(err);
+    pushSystem('Create session error');
+  } finally { createSessionBtn.disabled = false; }
+});
 
-function addTask(task_id, file, status){
-  ingestTasks[task_id] = { task_id, file, status };
-  renderTasks();
-  // start polling automatically only if server returned real task id
-  if (task_id && !pollers[task_id]) {
-    startPollingTask(task_id);
-  }
-}
+deleteSessionBtn.addEventListener('click', async () => {
+  const sid = sessionInput.value.trim();
+  if (!sid) return alert('Set session id first');
+  if (!confirm('Delete session and vault files?')) return;
+  deleteSessionBtn.disabled = true;
+  try {
+    const res = await fetch(api('/session/' + encodeURIComponent(sid)), { method: 'DELETE' });
+    const j = await res.json();
+    if (j?.ok) {
+      sessionInput.value = '';
+      sessionIndicator.textContent = '—';
+      pushSystem('Session deleted');
+    } else {
+      pushSystem('Delete returned error');
+    }
+  } catch (e) {
+    console.error(e);
+    pushSystem('Delete failed');
+  } finally { deleteSessionBtn.disabled = false; }
+});
 
-function updateTask(task_id, status, msg){
-  if(!ingestTasks[task_id]) ingestTasks[task_id]={task_id,file:'',status};
-  ingestTasks[task_id].status = status;
-  ingestTasks[task_id].msg = msg;
-  renderTasks();
-}
+copySessionBtn.addEventListener('click', () => {
+  const s = sessionInput.value.trim();
+  if (!s) return alert('No session id to copy');
+  navigator.clipboard?.writeText(s).then(() => pushSystem('Session id copied to clipboard')).catch(() => alert('Copy failed'));
+});
 
-function renderTasks(){
-  tasksDiv.innerHTML = '';
-  const keys = Object.keys(ingestTasks).reverse();
-  if(keys.length===0){ tasksDiv.textContent = 'No ingest tasks yet'; return; }
-  for(const k of keys){
-    const t = ingestTasks[k];
-    const row = el('div','task');
-    const left = el('div'); left.innerHTML = `<div style="font-weight:600">${t.file? t.file.split('/').pop():'(uploaded file)'} </div><div class="small-muted">${t.task_id}</div>`;
-    const right = el('div');
-    const st = el('span','st ' + (t.status || 'queued'));
-    st.textContent = (t.status || 'queued');
-    right.appendChild(st);
-    row.appendChild(left); row.appendChild(right);
-    tasksDiv.appendChild(row);
-  }
-}
-
-/* start polling a single task (one interval per task, with backoff) */
-function startPollingTask(taskId){
-  if (pollers[taskId]) return; // already polling
-
-  let intervalMs = 3000;
-
-  const pollFn = async () => {
-    try {
+/* Polling helper */
+async function pollIngestStatus(taskId, statusEl, opts={pollInterval:1000, timeoutMs:180000}) {
+  const start = Date.now();
+  try {
+    while (true) {
       const res = await fetch(api(`/ingest_status/${taskId}`));
       if (!res.ok) {
-        updateTask(taskId,'error',`status fetch ${res.status}`);
-        clearInterval(pollers[taskId]); delete pollers[taskId];
-        return;
+        statusEl.textContent = `Ingest: error (${res.status})`;
+        return { status: 'error' };
       }
       const j = await res.json();
-      const st = j?.status?.status || j?.status || 'unknown';
-      updateTask(taskId, st, j?.status?.msg || '');
-
-      if (st === 'queued' || st === 'processing') {
-        // back off slowly up to 10s
-        if (intervalMs < 10000) {
-          intervalMs = Math.min(10000, Math.floor(intervalMs * 1.3));
-          clearInterval(pollers[taskId]);
-          pollers[taskId] = setInterval(pollFn, intervalMs);
-        }
-        return;
+      const cur = j?.status?.status ?? j?.status ?? j?.state ?? j;
+      const curStr = (typeof cur === 'string') ? cur.toLowerCase() : (cur?.status ? String(cur.status).toLowerCase() : '');
+      if (curStr.includes('queued') || curStr.includes('processing') || curStr.includes('running') || curStr.includes('started') || curStr.includes('proc')) {
+        statusEl.textContent = 'Ingesting — processing on server...';
+      } else if (curStr.includes('done') || curStr.includes('completed') || curStr.includes('success')) {
+        statusEl.textContent = 'Ingest completed ✅ You can now ask questions.';
+        return { status: 'done', body: j };
+      } else if (curStr.includes('error') || curStr.includes('failed')) {
+        statusEl.textContent = 'Ingest failed ⚠️';
+        return { status: 'error', body: j };
+      } else {
+        statusEl.textContent = `Ingest status: ${JSON.stringify(cur).slice(0,80)}`;
       }
 
-      // final states
-      if (st === 'done') pushMessage('system','Ingest done: ' + taskId);
-      if (st === 'error' || st === 'failed') pushMessage('system','Ingest error: ' + (j?.status?.msg||'unknown'));
-      clearInterval(pollers[taskId]); delete pollers[taskId];
-    } catch (err) {
-      console.error('poll error', err);
-      updateTask(taskId,'error',err.message);
-      if (pollers[taskId]) { clearInterval(pollers[taskId]); delete pollers[taskId]; }
+      if (Date.now() - start > opts.timeoutMs) {
+        statusEl.textContent = 'Ingest timed out (server may still be working).';
+        return { status: 'timeout' };
+      }
+      await new Promise(r => setTimeout(r, opts.pollInterval));
     }
-  };
-
-  pollers[taskId] = setInterval(pollFn, intervalMs);
-  // run immediately once
-  pollFn();
+  } catch (e) {
+    console.error('poll error', e);
+    statusEl.textContent = 'Ingest: network error';
+    return { status: 'error', error: e };
+  }
 }
 
-/* ===== upload & ingest ===== */
-uploadBtn.addEventListener('click', async ()=>{
+/* Ingest handler */
+ingestBtn.addEventListener('click', async () => {
   const sid = sessionInput.value.trim();
-  if(!sid) return alert('Set or create a session first');
+  if (!sid) return alert('Create or paste a session id first');
+  if (pendingFiles.length === 0) return alert('Add files to upload');
 
-  if(stagedFiles.length===0) return alert('Select at least one file');
-  uploadBtn.disabled = true;
-  pushMessage('user', `Uploading ${stagedFiles.length} file(s)...`);
-  try{
-    const fd = new FormData();
-    for(const f of stagedFiles) fd.append('uploads', f, f.name); // important: field name 'uploads'
-    fd.append('background', backgroundCheckbox.checked ? 'true': 'false');
+  // show user bubble while client uploads
+  const uploadingBubble = appendBubble(`Uploading ${pendingFiles.length} file(s)...`, 'user');
 
-    const res = await fetch(api(`/session/${sid}/ingest`), { method:'POST', body: fd });
-    const j = await res.json();
-    if(!j?.ok){ pushMessage('assistant','Ingest error: '+JSON.stringify(j)); }
-    else {
-      pushMessage('assistant','Ingest request accepted. Check tasks on the right.');
-      // j.results array -> file / task_id / status or result
-      if(Array.isArray(j.results)){
-        for(const r of j.results){
-          const id = r.task_id || ('task-' + Math.random().toString(36).slice(2,9));
-          addTask(id, r.file, r.status || (r.result ? 'done' : 'queued'));
-          // startPollingTask will be called by addTask when task_id exists
-        }
-      }
-      // clear staged files on background ingest only
-      if(backgroundCheckbox.checked) stagedFiles = [];
+  const fd = new FormData();
+  for (const f of pendingFiles) fd.append('uploads', f, f.name);
+  fd.append('background', backgroundCheckbox.checked ? 'true' : 'false');
+
+  ingestBtn.disabled = true;
+  try {
+    const res = await fetch(api(`/session/${encodeURIComponent(sid)}/ingest`), {
+      method: 'POST',
+      body: fd
+    });
+    let j = null;
+    try { j = await res.json(); } catch(e){ j = null; }
+
+    // remove uploading bubble
+    if (uploadingBubble && uploadingBubble.parentNode) uploadingBubble.parentNode.removeChild(uploadingBubble);
+
+    if (!res.ok) {
+      pushAssistant('Upload failed — server returned error');
+      console.error('ingest error', res.status, j);
+      return;
+    }
+
+    let taskId = null;
+    if (j?.results && Array.isArray(j.results) && j.results.length > 0) {
+      taskId = j.results[0].task_id ?? j.results[0].taskId ?? null;
+    } else if (j?.task_id || j?.taskId) {
+      taskId = j.task_id ?? j.taskId;
+    }
+
+    const acceptBubble = pushStatus('Files submitted. Server ingests in background...');
+    if (!taskId) {
+      acceptBubble.textContent = 'Files submitted. Server processing (no task id).';
+      pendingFiles = [];
+      renderFileList();
+      return;
+    }
+
+    acceptBubble.textContent = 'Ingest queued — waiting for status...';
+    const pollRes = await pollIngestStatus(taskId, acceptBubble, { pollInterval: 1200, timeoutMs: 5*60*1000 });
+    if (pollRes?.status === 'done') {
+      pendingFiles = [];
       renderFileList();
     }
-  }catch(e){ pushMessage('assistant','Upload failed: '+e.message); }
-  uploadBtn.disabled = false;
+  } catch (e) {
+    console.error(e);
+    pushAssistant('Upload failed — network error.');
+  } finally {
+    ingestBtn.disabled = false;
+    chatBody.scrollTop = chatBody.scrollHeight;
+  }
 });
 
-/* ====== QA ====== */
-askBtn.addEventListener('click', async ()=>{
-  const sid = sessionInput.value.trim();
+/* QA */
+askBtn.addEventListener('click', ()=> ask());
+qInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); } });
+
+async function ask() {
   const q = qInput.value.trim();
-  const topk = Number(topKInput.value || 8);
-  if(!sid) return alert('Create or paste a session id first');
-  if(!q) return;
+  const sid = sessionInput.value.trim();
+  if (!q) return;
+  if (!sid) return alert('Create or paste a session id first');
+
+  qInput.value = '';
   askBtn.disabled = true;
-  pushMessage('user', q);
-  try{
+  pushUser(q);
+
+  try {
     const body = new URLSearchParams();
     body.append('query', q);
-    body.append('top_k', String(topk));
-    const res = await fetch(api(`/session/${sid}/qa`), { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() });
+    body.append('top_k', '8');
+
+    const res = await fetch(api(`/session/${encodeURIComponent(sid)}/qa`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString()
+    });
     const j = await res.json();
-    if(j?.ok && (j.answer || j.text)){
-      const answer = j.answer || j.text || JSON.stringify(j);
-      let cit = '';
-      if(j.citations) cit = '\nCitations: ' + JSON.stringify(j.citations);
-      pushMessage('assistant', answer, cit);
+    if (j?.ok && (j.answer || j.text || j.data)) {
+      const text = j.answer ?? j.text ?? (typeof j.data === 'string' ? j.data : JSON.stringify(j.data));
+      pushAssistant(text);
     } else {
-      pushMessage('assistant', 'QA error: ' + JSON.stringify(j));
+      // fallback: render raw JSON (truncated)
+      pushAssistant(JSON.stringify(j).slice(0, 300) || 'No answer returned');
     }
-  }catch(e){
-    pushMessage('assistant','QA request failed: '+e.message);
+  } catch (e) {
+    console.error(e);
+    pushAssistant('QA request failed — network error.');
+  } finally {
+    askBtn.disabled = false;
+    chatBody.scrollTop = chatBody.scrollHeight;
   }
-  qInput.value = '';
-  askBtn.disabled = false;
+}
+
+/* ensure wheel scroll works inside chat-body */
+chatBody.addEventListener('wheel', (e) => {
+  chatBody.scrollTop += e.deltaY;
+  e.preventDefault();
+}, { passive: false });
+
+document.querySelectorAll('.sidebar-inner, .chat-body').forEach(el => {
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { el.scrollTop += 40; e.preventDefault(); }
+    if (e.key === 'ArrowUp') { el.scrollTop -= 40; e.preventDefault(); }
+  });
 });
 
-/* ===== init UI ===== */
-renderFileList();
-renderTasks();
-pushMessage('system','Ready — create a session or paste an existing session id.');
-
-/* Helpful: if user opens locally and API is on another host, remember to set API_BASE above and enable CORS on FastAPI. */
+/* init */
+pushSystem('Lets begin the chat, MASTER 👍');
 </script>
 </body>
 </html>
